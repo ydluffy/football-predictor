@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { competitionNameZh, formatLocalTimeFromUtc, statusZh, teamNameZh } from "@/lib/zh";
+import { competitionNameZh, formatLocalTimeFromUtc, statusZh, teamNameZhMaybe } from "@/lib/zh";
+import { translateTeamNamesWithCache } from "@/lib/translateTeamNames";
 
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -25,12 +26,15 @@ export async function GET(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
+  const names = (data || []).flatMap((f: any) => [f.home_team_name, f.away_team_name]);
+  const translated = await translateTeamNamesWithCache(names);
+
   const fixtures = (data || []).map((f: any) => ({
     ...f,
     competition_name_zh: competitionNameZh(f.competition_code, f.competition_name),
     status_zh: statusZh(f.status),
-    home_team_name_zh: teamNameZh(f.home_team_name),
-    away_team_name_zh: teamNameZh(f.away_team_name),
+    home_team_name_zh: teamNameZhMaybe(f.home_team_name) || translated[(f.home_team_name || "").trim()] || f.home_team_name,
+    away_team_name_zh: teamNameZhMaybe(f.away_team_name) || translated[(f.away_team_name || "").trim()] || f.away_team_name,
     kickoff_time_zh: formatLocalTimeFromUtc(f.utc_date, "Asia/Shanghai"),
   }));
 

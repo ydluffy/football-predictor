@@ -81,6 +81,11 @@ export function teamNameZh(name?: string | null) {
   return TEAM_ZH[n] || name || "-";
 }
 
+export function teamNameZhMaybe(name?: string | null) {
+  const n = normalizeName(name);
+  return TEAM_ZH[n] || null;
+}
+
 export function formatLocalTimeFromUtc(utcIso?: string | null, tz = "Asia/Shanghai") {
   if (!utcIso) return "-";
   const d = new Date(utcIso);

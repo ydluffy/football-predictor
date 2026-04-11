@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { winDrawLoseFromLambdas } from "@/lib/poisson";
 import { evAndKelly } from "@/lib/kelly";
-import { competitionNameZh, formatLocalTimeFromUtc, statusZh, teamNameZh } from "@/lib/zh";
+import { competitionNameZh, formatLocalTimeFromUtc, statusZh, teamNameZhMaybe } from "@/lib/zh";
+import { translateTeamNamesWithCache } from "@/lib/translateTeamNames";
 
 type PredictionOut = {
   fixture_id: number;
@@ -121,6 +122,10 @@ export async function POST(req: Request) {
 
   const predictions: PredictionOut[] = [];
 
+  const translatedTeams = await translateTeamNamesWithCache(
+    fixtures.flatMap((f) => [f.home_team_name, f.away_team_name])
+  );
+
   // Fetch odds if available
   const fixtureIds = fixtures.map((f) => f.fixture_id);
   let oddsMap = new Map<number, { odds_home: number | null; odds_draw: number | null; odds_away: number | null }>();
@@ -178,9 +183,9 @@ export async function POST(req: Request) {
       status: f.status ?? null,
       status_zh: statusZh(f.status),
       home_team_name: f.home_team_name ?? null,
-      home_team_name_zh: teamNameZh(f.home_team_name),
+      home_team_name_zh: teamNameZhMaybe(f.home_team_name) || translatedTeams[(f.home_team_name || "").trim()] || f.home_team_name,
       away_team_name: f.away_team_name ?? null,
-      away_team_name_zh: teamNameZh(f.away_team_name),
+      away_team_name_zh: teamNameZhMaybe(f.away_team_name) || translatedTeams[(f.away_team_name || "").trim()] || f.away_team_name,
       p_home: probs.p_home,
       p_draw: probs.p_draw,
       p_away: probs.p_away,
