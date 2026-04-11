@@ -19,7 +19,7 @@ type StatusResponse = {
 };
 
 function isoToday() {
-  const d = new Date();
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, "0");
   const day = String(d.getDate()).padStart(2, "0");
@@ -33,6 +33,10 @@ export default function SetupPage() {
   const [dateFrom, setDateFrom] = useState(isoToday());
   const [dateTo, setDateTo] = useState(isoToday());
   const [oddsDate, setOddsDate] = useState(isoToday());
+  const [snapshotDate, setSnapshotDate] = useState(isoToday());
+  const [btFrom, setBtFrom] = useState(isoToday());
+  const [btTo, setBtTo] = useState(isoToday());
+  const [btResult, setBtResult] = useState<any | null>(null);
 
   async function refresh() {
     const r = await fetch("/api/status", { cache: "no-store" });
@@ -83,6 +87,43 @@ export default function SetupPage() {
       setMsg(`✅ 赔率拉取成功：${t}`);
     } catch (e) {
       setMsg(`❌ 赔率拉取失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function snapshotPredictions() {
+    setLoading(true);
+    setMsg("");
+    try {
+      const r = await fetch("/api/predictions/snapshot", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: snapshotDate }),
+      });
+      const t = await r.text();
+      if (!r.ok) throw new Error(t || `HTTP ${r.status}`);
+      setMsg(`✅ 预测快照已写入：${t}`);
+    } catch (e) {
+      setMsg(`❌ 预测快照失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function runBacktest() {
+    setLoading(true);
+    setMsg("");
+    setBtResult(null);
+    try {
+      const url = `/api/backtest?date_from=${encodeURIComponent(btFrom)}&date_to=${encodeURIComponent(btTo)}`;
+      const r = await fetch(url, { cache: "no-store" });
+      const j = await r.json();
+      if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
+      setBtResult(j);
+      setMsg("✅ 回测完成（结果已显示在下方）");
+    } catch (e) {
+      setMsg(`❌ 回测失败：${e instanceof Error ? e.message : String(e)}`);
     } finally {
       setLoading(false);
     }
@@ -189,6 +230,79 @@ export default function SetupPage() {
           ) : null}
           <p style={{ marginTop: 12, color: "#666" }}>
             赔率写入后，重新打开 <a href="/predictions">/predictions</a> 查看“价值投注建议（EV/Kelly）”。
+          </p>
+        </div>
+
+        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 16, background: "#fff" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>赛前：保存预测快照（用于回测）</h2>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 12, color: "#555" }}>date</span>
+              <input value={snapshotDate} onChange={(e) => setSnapshotDate(e.target.value)} style={{ padding: "8px 10px", border: "1px solid #ddd", borderRadius: 8 }} />
+            </label>
+            <button
+              onClick={snapshotPredictions}
+              disabled={loading}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "0",
+                background: "#0b5fff",
+                color: "#fff",
+                fontWeight: 700,
+                cursor: loading ? "not-allowed" : "pointer",
+                marginTop: 18,
+              }}
+            >
+              {loading ? "保存中…" : "保存预测快照"}
+            </button>
+          </div>
+          <p style={{ marginTop: 12, color: "#666" }}>
+            说明：回测使用“赛前保存的预测快照”对比赛后真实结果，避免信息穿越。
+          </p>
+        </div>
+
+        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 16, background: "#fff" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>赛后：回测（评估模型预测能力）</h2>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 12, color: "#555" }}>date_from</span>
+              <input value={btFrom} onChange={(e) => setBtFrom(e.target.value)} style={{ padding: "8px 10px", border: "1px solid #ddd", borderRadius: 8 }} />
+            </label>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 12, color: "#555" }}>date_to</span>
+              <input value={btTo} onChange={(e) => setBtTo(e.target.value)} style={{ padding: "8px 10px", border: "1px solid #ddd", borderRadius: 8 }} />
+            </label>
+            <button
+              onClick={runBacktest}
+              disabled={loading}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "0",
+                background: "#0b5fff",
+                color: "#fff",
+                fontWeight: 700,
+                cursor: loading ? "not-allowed" : "pointer",
+                marginTop: 18,
+              }}
+            >
+              {loading ? "回测中…" : "运行回测"}
+            </button>
+          </div>
+          {btResult?.summary ? (
+            <div style={{ marginTop: 12, border: "1px solid #eee", borderRadius: 10, padding: 12, background: "#fafafa" }}>
+              <div style={{ fontWeight: 700, marginBottom: 6 }}>回测摘要</div>
+              <div style={{ fontSize: 12, color: "#444", lineHeight: 1.8 }}>
+                <div>样本数 n：{btResult.summary.n}</div>
+                <div>Accuracy：{btResult.summary.accuracy != null ? (btResult.summary.accuracy * 100).toFixed(1) + "%" : "-"}</div>
+                <div>Logloss：{btResult.summary.logloss != null ? btResult.summary.logloss.toFixed(4) : "-"}</div>
+                <div>Brier：{btResult.summary.brier != null ? btResult.summary.brier.toFixed(4) : "-"}</div>
+              </div>
+            </div>
+          ) : null}
+          <p style={{ marginTop: 12, color: "#666" }}>
+            提示：如果 n=0，通常是因为你还没有在赛前保存预测快照，或比赛尚未变为 FINISHED。
           </p>
         </div>
       </div>
