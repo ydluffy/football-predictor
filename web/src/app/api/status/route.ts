@@ -6,6 +6,7 @@ export async function GET() {
   const hasSupabaseServiceRole = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY);
   const hasFootballDataKey = Boolean(process.env.FOOTBALL_DATA_API_KEY || process.env.FOOTBALLDATA_API_KEY);
   const hasOpenRouterKey = Boolean(process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY);
+  const hasApiFootballKey = Boolean(process.env.API_FOOTBALL_KEY);
   const openRouterModel = process.env.OPENROUTER_MODEL || null;
 
   let supabaseOk: boolean | null = null;
@@ -34,6 +35,7 @@ export async function GET() {
       hasSupabaseServiceRole,
       hasFootballDataKey,
       hasOpenRouterKey,
+      hasApiFootballKey,
       openRouterModel,
     },
     supabase: {
@@ -43,4 +45,3 @@ export async function GET() {
     },
   });
 }
-
