@@ -1,0 +1,4 @@
+match_id,date,league,home_team,away_team,odds_home,odds_draw,odds_away,actual_result,xg_home,xg_away,injury_flag,line_move,odds_home_open,odds_draw_open,odds_away_open,odds_home_last,odds_draw_last,odds_away_last,home_xg_last_1,home_xg_last_2,home_xg_last_3,away_xg_last_1,away_xg_last_2,away_xg_last_3,home_xga_last_1,home_xga_last_2,home_xga_last_3,away_xga_last_1,away_xga_last_2,away_xga_last_3
+example_0001,2025-08-01,EPL,Arsenal,Chelsea,2.10,3.25,3.40,H,1.45,1.10,0,-0.05,2.15,3.20,3.35,2.08,3.28,3.45,1.60,1.30,1.10,1.20,0.95,0.85,1.05,0.92,0.88,1.30,1.18,1.10
+example_0002,2025-08-02,LaLiga,Real Madrid,Valencia,1.75,3.60,4.80,A,1.90,0.85,1,0.18,1.78,3.55,4.70,1.72,3.65,4.95,2.10,1.85,1.60,0.95,0.85,0.80,0.90,0.85,0.78,1.65,1.50,1.35
+example_0003,2025-08-03,SerieA,Inter,AC Milan,2.30,3.10,3.20,D,1.20,1.25,0,0.02,2.28,3.15,3.18,2.35,3.05,3.10,1.35,1.20,1.05,1.40,1.30,1.15,1.10,1.00,0.95,1.20,1.10,1.05

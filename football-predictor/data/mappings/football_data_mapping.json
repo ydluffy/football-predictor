@@ -1,0 +1,17 @@
+{
+  "schema_version": "mapping_v1",
+  "feature_version": "v3",
+  "keep_unmapped": true,
+  "strict": true,
+  "required_standard_fields": ["odds_home", "odds_draw", "odds_away", "actual_result"],
+  "fields": {
+    "Div": "league",
+    "Date": "date",
+    "HomeTeam": "home_team",
+    "AwayTeam": "away_team",
+    "FTR": "actual_result",
+    "B365H": "odds_home",
+    "B365D": "odds_draw",
+    "B365A": "odds_away"
+  }
+}

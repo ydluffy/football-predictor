@@ -1,0 +1,4 @@
+match_id,date,league,home_team,away_team,odds_home,odds_draw,odds_away,actual_result
+example_0001,2025-08-01,EPL,Arsenal,Chelsea,2.10,3.25,3.40,H
+example_0002,2025-08-02,LaLiga,Real Madrid,Valencia,1.75,3.60,4.80,A
+example_0003,2025-08-03,SerieA,Inter,AC Milan,2.30,3.10,3.20,D

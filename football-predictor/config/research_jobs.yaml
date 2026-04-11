@@ -1,0 +1,45 @@
+schema_version: research_jobs_v1
+jobs:
+  - name: daily_prediction_mock
+    workflow: daily_prediction
+    model_type: logit
+    feature_version: v3
+    calibration: none
+    use_verifier: true
+    data_mode: mock
+    trigger:
+      type: interval
+      seconds: 3600
+
+  - name: daily_prediction_real
+    workflow: daily_prediction
+    model_type: logit
+    feature_version: v3
+    calibration: none
+    use_verifier: true
+    data_mode: real
+    trigger:
+      type: cron
+      cron: "0 9 * * *"
+
+  - name: post_match_learning_mock
+    workflow: post_match_learning
+    model_type: logit
+    feature_version: v3
+    calibration: none
+    use_verifier: false
+    data_mode: mock
+    trigger:
+      type: cron
+      cron: "0 0 * * *"
+
+  - name: weekly_candidate_upgrade
+    workflow: candidate_model_upgrade
+    model_type: lightgbm
+    feature_version: v3
+    calibration: sigmoid
+    use_verifier: false
+    data_mode: real
+    trigger:
+      type: cron
+      cron: "0 0 * * 6"

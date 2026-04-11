@@ -1,0 +1,18 @@
+{
+  "schema_version": "mapping_v1",
+  "feature_version": "v1",
+  "keep_unmapped": true,
+  "strict": true,
+  "required_standard_fields": ["match_id", "odds_home", "odds_draw", "odds_away", "actual_result"],
+  "fields": {
+    "MatchID": "match_id",
+    "Date": "date",
+    "LeagueName": "league",
+    "HomeTeam": "home_team",
+    "AwayTeam": "away_team",
+    "HomeOdds": "odds_home",
+    "DrawOdds": "odds_draw",
+    "AwayOdds": "odds_away",
+    "Result": "actual_result"
+  }
+}
