@@ -6,7 +6,8 @@ import { getFixtures, getPredictionsByDate, ingestFootballData } from "@/lib/api
 import { ProbBar } from "@/components/ProbBar";
 
 function todayStr(): string {
-  const d = new Date();
+  // Asia/Shanghai today
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
@@ -117,6 +118,14 @@ export default function PredictionsPage() {
                     ))}
                   </ul>
                 </div>
+                {"betting_recommendation" in p ? (
+                  <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+                    <div className="font-semibold">价值投注建议</div>
+                    <div className="mt-1">
+                      {p.betting_recommendation || "未提供赔率，无法计算 EV/Kelly"}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             );
           })}

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { winDrawLoseFromLambdas } from "@/lib/poisson";
+import { evAndKelly } from "@/lib/kelly";
 
 type PredictionOut = {
   fixture_id: number;
@@ -11,6 +12,13 @@ type PredictionOut = {
   lambda_home: number;
   lambda_away: number;
   factors: string[];
+  ev_home?: number;
+  ev_draw?: number;
+  ev_away?: number;
+  kelly_home?: number;
+  kelly_draw?: number;
+  kelly_away?: number;
+  betting_recommendation?: string;
 };
 
 function mean(nums: number[]) {
@@ -101,6 +109,16 @@ export async function POST(req: Request) {
 
   const predictions: PredictionOut[] = [];
 
+  // Fetch odds if available
+  const fixtureIds = fixtures.map((f) => f.fixture_id);
+  let oddsMap = new Map<number, { odds_home: number | null; odds_draw: number | null; odds_away: number | null }>();
+  if (fixtureIds.length) {
+    const { data: oddsRows } = await sb.from("odds").select("fixture_id,odds_home,odds_draw,odds_away").in("fixture_id", fixtureIds);
+    for (const r of oddsRows || []) {
+      oddsMap.set(r.fixture_id, { odds_home: r.odds_home, odds_draw: r.odds_draw, odds_away: r.odds_away });
+    }
+  }
+
   for (const f of fixtures) {
     const competitionCode = f.competition_code || "";
     const homeId = f.home_team_id;
@@ -138,7 +156,7 @@ export async function POST(req: Request) {
     factors.push(`客队近${away.n}场: 场均进球 ${away.gfAvg.toFixed(2)}，场均失球 ${away.gaAvg.toFixed(2)}`);
     factors.push(`推断 λH=${lambdaHome.toFixed(2)}，λA=${lambdaAway.toFixed(2)}`);
 
-    predictions.push({
+    const base: PredictionOut = {
       fixture_id: f.fixture_id,
       p_home: probs.p_home,
       p_draw: probs.p_draw,
@@ -147,9 +165,16 @@ export async function POST(req: Request) {
       lambda_home: lambdaHome,
       lambda_away: lambdaAway,
       factors,
-    });
+    };
+
+    const o = oddsMap.get(f.fixture_id);
+    if (o && (o.odds_home || o.odds_draw || o.odds_away)) {
+      const ek = evAndKelly({ p_home: probs.p_home, p_draw: probs.p_draw, p_away: probs.p_away }, o, 0.25);
+      predictions.push({ ...base, ...ek });
+    } else {
+      predictions.push(base);
+    }
   }
 
   return NextResponse.json({ count: predictions.length, predictions });
 }
-

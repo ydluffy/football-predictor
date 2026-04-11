@@ -37,6 +37,13 @@ export type Prediction = {
   lambda_home: number;
   lambda_away: number;
   factors: string[];
+  ev_home?: number;
+  ev_draw?: number;
+  ev_away?: number;
+  kelly_home?: number;
+  kelly_draw?: number;
+  kelly_away?: number;
+  betting_recommendation?: string;
 };
 
 export type PredictionsResponse = {
