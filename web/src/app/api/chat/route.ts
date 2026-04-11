@@ -109,8 +109,42 @@ export async function POST(req: Request) {
   let toolResult = "";
 
   if (name === "get_fixtures") {
-    const r = await fetch(`${new URL(req.url).origin}/api/fixtures?date=${encodeURIComponent(date)}`, { cache: "no-store" });
-    toolResult = await r.text();
+    const base = new URL(req.url).origin;
+    // First attempt: requested date
+    let r = await fetch(`${base}/api/fixtures?date=${encodeURIComponent(date)}`, { cache: "no-store" });
+    let txt = await r.text();
+    try {
+      const j = JSON.parse(txt);
+      if (j?.count === 0) {
+        // Auto-fallback: try yesterday then tomorrow (Asia/Shanghai)
+        const d = new Date(`${date}T00:00:00+08:00`);
+        const y = new Date(d.getTime() - 24 * 3600 * 1000);
+        const t = new Date(d.getTime() + 24 * 3600 * 1000);
+        const fmt = (dt: Date) =>
+          new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(dt);
+        const tryDates = [fmt(y), fmt(t)];
+        for (const dstr of tryDates) {
+          const rr = await fetch(`${base}/api/fixtures?date=${encodeURIComponent(dstr)}`, { cache: "no-store" });
+          const ttxt = await rr.text();
+          try {
+            const jj = JSON.parse(ttxt);
+            if (jj?.count > 0) {
+              toolResult = JSON.stringify({ ...jj, fallback_used: true, requested_date: date, used_date: dstr });
+              break;
+            }
+          } catch {
+            /* ignore */
+          }
+        }
+        if (!toolResult) {
+          toolResult = JSON.stringify({ ...j, fallback_used: false, requested_date: date });
+        }
+      } else {
+        toolResult = txt;
+      }
+    } catch {
+      toolResult = txt;
+    }
   } else if (name === "get_predictions") {
     const r = await fetch(`${new URL(req.url).origin}/api/predictions`, {
       method: "POST",
