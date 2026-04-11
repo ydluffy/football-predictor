@@ -4,6 +4,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Fixture, Prediction } from "@/lib/api";
 import { getFixtures, getPredictionsByDate, ingestFootballData } from "@/lib/api";
 import { ProbBar } from "@/components/ProbBar";
+import { competitionNameZh, formatLocalTimeFromUtc, teamNameZh } from "@/lib/zh";
 
 function todayStr(): string {
   // Asia/Shanghai today
@@ -93,10 +94,11 @@ export default function PredictionsPage() {
                 <div className="flex items-start justify-between gap-3">
                   <div>
                     <div className="text-sm font-semibold">
-                      {fx?.home_team_name || "主队"} vs {fx?.away_team_name || "客队"}
+                      {(fx?.home_team_name_zh || teamNameZh(fx?.home_team_name)) || "主队"} vs {(fx?.away_team_name_zh || teamNameZh(fx?.away_team_name)) || "客队"}
                     </div>
                     <div className="mt-0.5 text-xs text-zinc-500">
-                      {fx?.competition_name || fx?.competition_code || "-"} · {fx?.utc_date?.slice(11, 16) || "-"} UTC
+                      {fx?.competition_name_zh || competitionNameZh(fx?.competition_code, fx?.competition_name)} · {fx?.kickoff_time_zh || formatLocalTimeFromUtc(fx?.utc_date, "Asia/Shanghai")}
+                      <span className="ml-2 text-zinc-400">(UTC {fx?.utc_date?.slice(11, 16) || "-"})</span>
                     </div>
                   </div>
                   <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs tabular-nums text-zinc-700">

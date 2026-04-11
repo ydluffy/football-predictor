@@ -2,9 +2,21 @@ import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 import { winDrawLoseFromLambdas } from "@/lib/poisson";
 import { evAndKelly } from "@/lib/kelly";
+import { competitionNameZh, formatLocalTimeFromUtc, statusZh, teamNameZh } from "@/lib/zh";
 
 type PredictionOut = {
   fixture_id: number;
+  competition_code?: string;
+  competition_name?: string | null;
+  competition_name_zh?: string;
+  utc_date?: string | null;
+  kickoff_time_zh?: string;
+  status?: string | null;
+  status_zh?: string;
+  home_team_name?: string | null;
+  home_team_name_zh?: string;
+  away_team_name?: string | null;
+  away_team_name_zh?: string;
   p_home: number;
   p_draw: number;
   p_away: number;
@@ -88,7 +100,7 @@ export async function POST(req: Request) {
   if (body.fixture_ids?.length) {
     const { data, error } = await sb
       .from("fixtures")
-      .select("fixture_id,competition_code,utc_date,status,home_team_id,home_team_name,away_team_id,away_team_name")
+      .select("fixture_id,competition_code,competition_name,utc_date,status,home_team_id,home_team_name,away_team_id,away_team_name")
       .in("fixture_id", body.fixture_ids);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
     fixtures = data || [];
@@ -97,7 +109,7 @@ export async function POST(req: Request) {
     const to = new Date(new Date(`${body.date}T00:00:00.000Z`).getTime() + 24 * 3600 * 1000).toISOString();
     const { data, error } = await sb
       .from("fixtures")
-      .select("fixture_id,competition_code,utc_date,status,home_team_id,home_team_name,away_team_id,away_team_name")
+      .select("fixture_id,competition_code,competition_name,utc_date,status,home_team_id,home_team_name,away_team_id,away_team_name")
       .gte("utc_date", from)
       .lt("utc_date", to)
       .order("utc_date", { ascending: true });
@@ -158,6 +170,17 @@ export async function POST(req: Request) {
 
     const base: PredictionOut = {
       fixture_id: f.fixture_id,
+      competition_code: f.competition_code,
+      competition_name: f.competition_name ?? null,
+      competition_name_zh: competitionNameZh(f.competition_code, f.competition_name),
+      utc_date: f.utc_date ?? null,
+      kickoff_time_zh: formatLocalTimeFromUtc(f.utc_date, "Asia/Shanghai"),
+      status: f.status ?? null,
+      status_zh: statusZh(f.status),
+      home_team_name: f.home_team_name ?? null,
+      home_team_name_zh: teamNameZh(f.home_team_name),
+      away_team_name: f.away_team_name ?? null,
+      away_team_name_zh: teamNameZh(f.away_team_name),
       p_home: probs.p_home,
       p_draw: probs.p_draw,
       p_away: probs.p_away,

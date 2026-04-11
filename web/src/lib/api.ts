@@ -11,12 +11,17 @@ export type Fixture = {
   fixture_id: number;
   competition_code?: string | null;
   competition_name?: string | null;
+  competition_name_zh?: string | null;
   utc_date?: string | null;
+  kickoff_time_zh?: string | null;
   status?: string | null;
+  status_zh?: string | null;
   home_team_id?: number | null;
   home_team_name?: string | null;
+  home_team_name_zh?: string | null;
   away_team_id?: number | null;
   away_team_name?: string | null;
+  away_team_name_zh?: string | null;
   home_score?: number | null;
   away_score?: number | null;
 };

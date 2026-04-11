@@ -3,9 +3,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { Fixture } from "@/lib/api";
 import { getFixtures, ingestFootballData } from "@/lib/api";
+import { competitionNameZh, formatLocalTimeFromUtc, statusZh, teamNameZh } from "@/lib/zh";
 
 function todayStr(): string {
-  const d = new Date();
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
@@ -79,7 +80,7 @@ export default function FixturesPage() {
           <table className="w-full text-left text-sm">
             <thead className="bg-zinc-50 text-xs text-zinc-500">
               <tr>
-                <th className="px-4 py-2">时间(UTC)</th>
+                <th className="px-4 py-2">时间(北京)</th>
                 <th className="px-4 py-2">联赛</th>
                 <th className="px-4 py-2">主队</th>
                 <th className="px-4 py-2">客队</th>
@@ -90,11 +91,27 @@ export default function FixturesPage() {
             <tbody>
               {rows.map((r) => (
                 <tr key={r.fixture_id} className="border-t border-zinc-100">
-                  <td className="px-4 py-2 text-zinc-600 tabular-nums">{r.utc_date?.slice(11, 16) || "-"}</td>
-                  <td className="px-4 py-2">{r.competition_name || r.competition_code || "-"}</td>
-                  <td className="px-4 py-2 font-medium">{r.home_team_name || "-"}</td>
-                  <td className="px-4 py-2 font-medium">{r.away_team_name || "-"}</td>
-                  <td className="px-4 py-2 text-zinc-600">{r.status || "-"}</td>
+                  <td className="px-4 py-2 text-zinc-600 tabular-nums">
+                    {r.kickoff_time_zh || formatLocalTimeFromUtc(r.utc_date, "Asia/Shanghai")}
+                    <span className="ml-2 text-xs text-zinc-400">(UTC {r.utc_date?.slice(11, 16) || "-"})</span>
+                  </td>
+                  <td className="px-4 py-2">
+                    {r.competition_name_zh || competitionNameZh(r.competition_code, r.competition_name)}
+                    <span className="ml-2 text-xs text-zinc-400">{r.competition_code || ""}</span>
+                  </td>
+                  <td className="px-4 py-2 font-medium">
+                    {r.home_team_name_zh || teamNameZh(r.home_team_name)}
+                    {r.home_team_name_zh && r.home_team_name_zh !== r.home_team_name ? (
+                      <span className="ml-2 text-xs text-zinc-400">{r.home_team_name}</span>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-2 font-medium">
+                    {r.away_team_name_zh || teamNameZh(r.away_team_name)}
+                    {r.away_team_name_zh && r.away_team_name_zh !== r.away_team_name ? (
+                      <span className="ml-2 text-xs text-zinc-400">{r.away_team_name}</span>
+                    ) : null}
+                  </td>
+                  <td className="px-4 py-2 text-zinc-600">{r.status_zh || statusZh(r.status)}</td>
                   <td className="px-4 py-2 tabular-nums">
                     {r.home_score != null && r.away_score != null ? `${r.home_score}-${r.away_score}` : "-"}
                   </td>
