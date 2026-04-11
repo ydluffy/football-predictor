@@ -6,8 +6,11 @@ export async function GET(req: Request) {
   const date = searchParams.get("date");
   if (!date) return NextResponse.json({ error: "missing date" }, { status: 400 });
 
-  const from = new Date(`${date}T00:00:00.000Z`).toISOString();
-  const to = new Date(new Date(`${date}T00:00:00.000Z`).getTime() + 24 * 3600 * 1000).toISOString();
+  // Interpret the provided YYYY-MM-DD as Asia/Shanghai local day and convert to UTC window.
+  const fromLocal = new Date(`${date}T00:00:00+08:00`);
+  const toLocal = new Date(fromLocal.getTime() + 24 * 3600 * 1000);
+  const from = fromLocal.toISOString();
+  const to = toLocal.toISOString();
 
   const sb = supabaseAdmin();
   const { data, error } = await sb
@@ -28,4 +31,3 @@ export async function GET(req: Request) {
     fixtures: data || [],
   });
 }
-

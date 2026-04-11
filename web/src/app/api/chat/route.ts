@@ -5,12 +5,14 @@ type ChatMessage = {
   content: string;
 };
 
-function todayIsoDate() {
-  const d = new Date();
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const day = String(d.getUTCDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
+function todayIsoDate(tz = "Asia/Shanghai") {
+  const fmt = new Intl.DateTimeFormat("en-CA", {
+    timeZone: tz,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  return fmt.format(new Date());
 }
 
 async function openRouterChat(messages: any[], tools?: any[]) {
