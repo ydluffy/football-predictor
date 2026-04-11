@@ -8,6 +8,7 @@ type StatusResponse = {
     hasSupabaseServiceRole: boolean;
     hasFootballDataKey: boolean;
     hasOpenRouterKey: boolean;
+    hasApiFootballKey?: boolean;
     openRouterModel: string | null;
   };
   supabase: {
@@ -31,6 +32,7 @@ export default function SetupPage() {
   const [msg, setMsg] = useState<string>("");
   const [dateFrom, setDateFrom] = useState(isoToday());
   const [dateTo, setDateTo] = useState(isoToday());
+  const [oddsDate, setOddsDate] = useState(isoToday());
 
   async function refresh() {
     const r = await fetch("/api/status", { cache: "no-store" });
@@ -70,6 +72,22 @@ export default function SetupPage() {
     }
   }
 
+  async function ingestOdds() {
+    setLoading(true);
+    setMsg("");
+    try {
+      const qs = new URLSearchParams({ date: oddsDate });
+      const r = await fetch(`/api/ingest/odds?${qs.toString()}`, { method: "POST" });
+      const t = await r.text();
+      if (!r.ok) throw new Error(t || `HTTP ${r.status}`);
+      setMsg(`✅ 赔率拉取成功：${t}`);
+    } catch (e) {
+      setMsg(`❌ 赔率拉取失败：${e instanceof Error ? e.message : String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  }
+
   return (
     <div style={{ maxWidth: 920, margin: "0 auto", padding: 24 }}>
       <h1 style={{ fontSize: 24, fontWeight: 700, marginBottom: 8 }}>⚙️ 部署自检 / 一键初始化</h1>
@@ -93,6 +111,7 @@ export default function SetupPage() {
               <li>SUPABASE_SERVICE_ROLE_KEY：{status.env.hasSupabaseServiceRole ? "✅" : "❌"}</li>
               <li>FOOTBALL_DATA_API_KEY：{status.env.hasFootballDataKey ? "✅" : "❌"}</li>
               <li>OPENROUTER_API_KEY：{status.env.hasOpenRouterKey ? "✅" : "❌"}</li>
+              <li>API_FOOTBALL_KEY（自动赔率）：{status.env.hasApiFootballKey ? "✅" : "❌"}</li>
               <li>OPENROUTER_MODEL：{status.env.openRouterModel || "(未设置，默认 deepseek/deepseek-chat)"}</li>
             </ul>
           )}
@@ -140,8 +159,39 @@ export default function SetupPage() {
             导入成功后，去 <a href="/fixtures">/fixtures</a> 查看赛程，去 <a href="/predictions">/predictions</a> 查看预测。
           </p>
         </div>
+
+        <div style={{ border: "1px solid #eee", borderRadius: 12, padding: 16, background: "#fff" }}>
+          <h2 style={{ fontSize: 16, fontWeight: 700, marginBottom: 10 }}>一键拉取赔率</h2>
+          <div style={{ display: "flex", gap: 12, flexWrap: "wrap", alignItems: "center" }}>
+            <label style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <span style={{ fontSize: 12, color: "#555" }}>date</span>
+              <input value={oddsDate} onChange={(e) => setOddsDate(e.target.value)} style={{ padding: "8px 10px", border: "1px solid #ddd", borderRadius: 8 }} />
+            </label>
+            <button
+              onClick={ingestOdds}
+              disabled={loading || !status?.env?.hasApiFootballKey}
+              style={{
+                padding: "10px 14px",
+                borderRadius: 10,
+                border: "0",
+                background: status?.env?.hasApiFootballKey ? "#0b5fff" : "#94a3b8",
+                color: "#fff",
+                fontWeight: 700,
+                cursor: loading || !status?.env?.hasApiFootballKey ? "not-allowed" : "pointer",
+                marginTop: 18,
+              }}
+            >
+              {loading ? "拉取中…" : "拉取赔率"}
+            </button>
+          </div>
+          {!status?.env?.hasApiFootballKey ? (
+            <p style={{ marginTop: 10, color: "#b42318" }}>请先在 Vercel 环境变量中配置 API_FOOTBALL_KEY。</p>
+          ) : null}
+          <p style={{ marginTop: 12, color: "#666" }}>
+            赔率写入后，重新打开 <a href="/predictions">/predictions</a> 查看“价值投注建议（EV/Kelly）”。
+          </p>
+        </div>
       </div>
     </div>
   );
 }
-

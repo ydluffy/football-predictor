@@ -15,6 +15,33 @@ function todayIsoDate(tz = "Asia/Shanghai") {
   return fmt.format(new Date());
 }
 
+function addDaysIsoDate(isoDate: string, deltaDays: number) {
+  const base = new Date(`${isoDate}T00:00:00+08:00`);
+  const d = new Date(base.getTime() + deltaDays * 24 * 3600 * 1000);
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(d);
+}
+
+function extractExplicitDate(text: string) {
+  const m = text.match(/\b(\d{4}-\d{2}-\d{2})\b/);
+  return m ? m[1] : null;
+}
+
+function resolveTargetDate(userText: string, toolDate?: string) {
+  const explicit = extractExplicitDate(userText);
+  if (explicit) return explicit;
+
+  const today = todayIsoDate();
+  if (/(今天|今日)/.test(userText)) return today;
+  if (/昨天/.test(userText)) return addDaysIsoDate(today, -1);
+  if (/明天/.test(userText)) return addDaysIsoDate(today, 1);
+  return toolDate || today;
+}
+
 async function openRouterChat(messages: any[], tools?: any[]) {
   const apiKey = process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY;
   const model = process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat";
@@ -43,8 +70,12 @@ export async function POST(req: Request) {
   try {
     const body = (await req.json().catch(() => ({}))) as { messages?: ChatMessage[] };
     const incoming = body.messages || [];
+    const lastUser = [...incoming].reverse().find((m) => m.role === "user")?.content || "";
+    const todayCN = todayIsoDate();
     const sys =
-      "你是AI球赛预测助手。你必须基于工具返回的真实数据回答，禁止编造具体赛程/伤停/赔率。\n" +
+      `你是AI球赛预测助手。今天（Asia/Shanghai）日期是 ${todayCN}。\n` +
+      "你必须基于工具返回的真实数据回答，禁止编造具体赛程/伤停/赔率，也不要输出 tool_call_id、内部 ID 或原始 JSON。\n" +
+      "当用户说“今天/昨日/明日”但没有明确给出 YYYY-MM-DD 时，你必须使用上面的日期进行推导。\n" +
       "输出尽量使用 Markdown（表格/列表），并用 ⚽📈💡 等图标提升可读性。";
 
     const msgs: any[] = [{ role: "system", content: sys }, ...incoming];
@@ -92,6 +123,21 @@ export async function POST(req: Request) {
     {
       type: "function",
       function: {
+        name: "ingest_odds",
+        description: "自动拉取指定日期的 1X2 赔率并写入数据库（需要配置 API_FOOTBALL_KEY）",
+        parameters: {
+          type: "object",
+          properties: {
+            date: { type: "string", description: "YYYY-MM-DD" },
+            bookmaker: { type: "string", description: "可选，API-Football bookmaker id" },
+          },
+          required: ["date"],
+        },
+      },
+    },
+    {
+      type: "function",
+      function: {
         name: "upsert_odds",
         description: "写入或更新某些比赛的胜平负赔率（fixture_id 对应 /api/fixtures 返回的 id），随后可获取带 EV/Kelly 的预测",
         parameters: {
@@ -133,7 +179,7 @@ export async function POST(req: Request) {
     args = {};
   }
 
-  const date = args.date || todayIsoDate();
+  const date = resolveTargetDate(lastUser, args.date);
   let toolResult = "";
 
   if (name === "get_fixtures") {
@@ -174,12 +220,44 @@ export async function POST(req: Request) {
       toolResult = txt;
     }
   } else if (name === "get_predictions") {
-    const r = await fetch(`${new URL(req.url).origin}/api/predictions`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ date }),
-    });
-    toolResult = await r.text();
+    const base = new URL(req.url).origin;
+    const run = async (d: string) => {
+      const r = await fetch(`${base}/api/predictions`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ date: d }),
+      });
+      const txt = await r.text();
+      try {
+        return { json: JSON.parse(txt), raw: txt };
+      } catch {
+        return { json: null, raw: txt };
+      }
+    };
+
+    const firstRun = await run(date);
+    if (firstRun.json?.count === 0 && !extractExplicitDate(lastUser) && /(今天|今日)/.test(lastUser)) {
+      const y = addDaysIsoDate(date, -1);
+      const t = addDaysIsoDate(date, 1);
+      const candidates = [y, t];
+      let picked = firstRun;
+      let used = date;
+      for (const d of candidates) {
+        const rr = await run(d);
+        if (rr.json?.count > 0) {
+          picked = rr;
+          used = d;
+          break;
+        }
+      }
+      if (picked.json) {
+        toolResult = JSON.stringify({ ...picked.json, fallback_used: used !== date, requested_date: date, used_date: used });
+      } else {
+        toolResult = picked.raw;
+      }
+    } else {
+      toolResult = firstRun.json ? JSON.stringify({ ...firstRun.json, requested_date: date }) : firstRun.raw;
+    }
   } else if (name === "ingest_football_data") {
     const dateFrom = args.date_from || date;
     const dateTo = args.date_to || date;
@@ -187,6 +265,12 @@ export async function POST(req: Request) {
       `${new URL(req.url).origin}/api/ingest/football-data?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`,
       { method: "POST" }
     );
+    toolResult = await r.text();
+  } else if (name === "ingest_odds") {
+    const base = new URL(req.url).origin;
+    const qs = new URLSearchParams({ date });
+    if (args.bookmaker) qs.set("bookmaker", String(args.bookmaker));
+    const r = await fetch(`${base}/api/ingest/odds?${qs.toString()}`, { method: "POST" });
     toolResult = await r.text();
   } else if (name === "upsert_odds") {
     const base = new URL(req.url).origin;
@@ -200,14 +284,15 @@ export async function POST(req: Request) {
         body: JSON.stringify({ odds: items }),
       });
       const utxt = await ur.text();
-      if (args.date) {
+      if (args.date || /(今天|今日|昨天|明天)/.test(lastUser)) {
+        const d = resolveTargetDate(lastUser, args.date);
         const pr = await fetch(`${base}/api/predictions`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ date: args.date }),
+          body: JSON.stringify({ date: d }),
         });
         const ptxt = await pr.text();
-        toolResult = JSON.stringify({ upsert_result: utxt, predictions: ptxt });
+        toolResult = JSON.stringify({ upsert_result: utxt, predictions: ptxt, requested_date: d });
       } else {
         toolResult = utxt;
       }
