@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
-import { winDrawLoseFromLambdas } from "@/lib/poisson";
+import { topScorelines, totalsProbs, winDrawLoseFromLambdas } from "@/lib/poisson";
 import { evAndKelly } from "@/lib/kelly";
 import { competitionNameZh, formatLocalTimeFromUtc, statusZh, teamNameZhMaybe } from "@/lib/zh";
 import { translateTeamNamesWithCache } from "@/lib/translateTeamNames";
@@ -24,6 +24,11 @@ type PredictionOut = {
   confidence: number;
   lambda_home: number;
   lambda_away: number;
+  scorelines_top?: Array<{ home_goals: number; away_goals: number; p: number }>;
+  p_over_2_5?: number;
+  p_under_2_5?: number;
+  p_btts_yes?: number;
+  p_btts_no?: number;
   factors: string[];
   ev_home?: number;
   ev_draw?: number;
@@ -158,6 +163,8 @@ export async function POST(req: Request) {
     const lambdaAway = clamp(leagueAvg.avgAway * awayAttack * homeDef, 0.2, 3.5);
 
     const probs = winDrawLoseFromLambdas(lambdaHome, lambdaAway, 8);
+    const scoreTop = topScorelines(lambdaHome, lambdaAway, 6, 5);
+    const totals = totalsProbs(lambdaHome, lambdaAway, 8);
 
     const dataCompleteness = Math.min(1, (home.n + away.n) / 20);
     const entropy = -(
@@ -192,6 +199,8 @@ export async function POST(req: Request) {
       confidence,
       lambda_home: lambdaHome,
       lambda_away: lambdaAway,
+      scorelines_top: scoreTop,
+      ...totals,
       factors,
     };
 

@@ -5,7 +5,7 @@ import type { ChatMessage } from "@/lib/api";
 import { ingestFootballData, postChat } from "@/lib/api";
 
 function todayStr(): string {
-  const d = new Date();
+  const d = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
   const yyyy = d.getFullYear();
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
@@ -20,7 +20,7 @@ export default function ChatPage() {
     {
       role: "assistant",
       content:
-        "你好，我是你的 AI 球赛预测助手。你可以问我：\n\n- 今天有什么比赛？\n- 给我今天五大联赛的胜平负概率\n\n如果还没入库，我也可以帮你触发导入（需要配置 football-data.org 的 API Key）。",
+        "你好，我是你的 AI 球赛预测助手。\n\n你可以这样问我：\n- 今天有什么比赛？\n- 给我今天五大联赛的胜平负概率，并列出关键因素\n- 帮我预测今天两场比赛，并给出 Top 比分 / 大小球(2.5) / 双方进球\n- 拉取今天的赔率并跑预测（需要配置 API_FOOTBALL_KEY）\n\n提示：系统以北京时间（Asia/Shanghai）理解“今天/昨天/明天”。",
     },
   ]);
 
@@ -70,7 +70,7 @@ export default function ChatPage() {
       <section className="rounded-xl border border-zinc-200 bg-white">
         <div className="border-b border-zinc-200 px-4 py-3">
           <div className="text-sm font-semibold">对话</div>
-          <div className="text-xs text-zinc-500">后端：FastAPI `/api/chat`（支持工具调用）</div>
+          <div className="text-xs text-zinc-500">后端：Next.js `/api/chat`（支持工具调用）</div>
         </div>
         <div className="h-[60vh] overflow-auto px-4 py-4">
           <div className="flex flex-col gap-3">
@@ -144,9 +144,16 @@ export default function ChatPage() {
             >
               填入：今日胜平负概率
             </button>
+            <button
+              onClick={() => setInput("预测今天两场比赛，并给出Top比分/大小球(2.5)/双方进球")}
+              disabled={busy}
+              className="w-full rounded-lg border border-zinc-200 px-3 py-2 text-sm hover:bg-zinc-50 disabled:opacity-50"
+            >
+              填入：比分与大小球
+            </button>
           </div>
           <div className="mt-3 text-xs text-zinc-500">
-            若导入失败，检查后端 `football-predictor/.env` 中是否配置 `FOOTBALL_DATA_API_KEY`。
+            若导入/拉取赔率失败，检查 Vercel 环境变量：`FOOTBALL_DATA_API_KEY`、`API_FOOTBALL_KEY`。
           </div>
         </div>
 

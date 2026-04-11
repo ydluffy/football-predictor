@@ -128,6 +128,24 @@ export default function PredictionsPage() {
                     </div>
                   </div>
                 ) : null}
+
+                {p.scorelines_top?.length ? (
+                  <div className="mt-3 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700">
+                    <div className="font-semibold">比分 / 大小球（基于泊松 λ）</div>
+                    <div className="mt-1 text-zinc-600">
+                      Top比分：
+                      {p.scorelines_top
+                        .slice(0, 3)
+                        .map((s) => `${s.home_goals}-${s.away_goals}(${Math.round(s.p * 100)}%)`)
+                        .join("，")}
+                    </div>
+                    <div className="mt-1 text-zinc-600">
+                      大2.5：{p.p_over_2_5 != null ? `${Math.round(p.p_over_2_5 * 100)}%` : "-"}，小2.5：
+                      {p.p_under_2_5 != null ? `${Math.round(p.p_under_2_5 * 100)}%` : "-"}
+                      ，双方进球：{p.p_btts_yes != null ? `${Math.round(p.p_btts_yes * 100)}%` : "-"}
+                    </div>
+                  </div>
+                ) : null}
               </div>
             );
           })}

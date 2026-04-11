@@ -42,6 +42,23 @@ function resolveTargetDate(userText: string, toolDate?: string) {
   return toolDate || today;
 }
 
+function sanitizeAssistantOutput(text: string) {
+  const lines = (text || "").split(/\r?\n/);
+  const out: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      out.push(line);
+      continue;
+    }
+    if (/tool_call_id/i.test(trimmed)) continue;
+    if (/^[0-9a-f]{24,}\s*->\s*\{/.test(trimmed)) continue;
+    if (/^\{\s*"date_from"\s*:\s*"\d{4}-\d{2}-\d{2}"/.test(trimmed)) continue;
+    out.push(line);
+  }
+  return out.join("\n").trim();
+}
+
 async function openRouterChat(messages: any[], tools?: any[]) {
   const apiKey = process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY;
   const model = process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat";
@@ -74,7 +91,9 @@ export async function POST(req: Request) {
     const todayCN = todayIsoDate();
     const sys =
       `你是AI球赛预测助手。今天（Asia/Shanghai）日期是 ${todayCN}。\n` +
-      "你必须基于工具返回的真实数据回答，禁止编造具体赛程/伤停/赔率，也不要输出 tool_call_id、内部 ID 或原始 JSON。\n" +
+      "你必须基于工具返回的真实数据回答，禁止编造具体赛程/伤停/赔率/球队近况/球员伤停/历史交锋等事实。\n" +
+      "绝对不要输出 tool_call_id、内部 ID、原始 JSON、或者类似 'xxxxxx -> { ... }' 的调试信息。\n" +
+      "当用户要求比分预测、大小球(2.5)或双方进球(BTTS)时，只能使用工具返回的模型字段进行计算/展示；没有数据就明确说明无法提供。\n" +
       "当用户说“今天/昨日/明日”但没有明确给出 YYYY-MM-DD 时，你必须使用上面的日期进行推导。\n" +
       "输出尽量使用 Markdown（表格/列表），并用 ⚽📈💡 等图标提升可读性。";
 
@@ -167,7 +186,7 @@ export async function POST(req: Request) {
 
     const first = await openRouterChat(msgs, tools);
     if (!first.tool_calls?.length) {
-      return NextResponse.json({ content: first.content || "" });
+      return NextResponse.json({ content: sanitizeAssistantOutput(first.content || "") });
     }
 
   const toolCall = first.tool_calls[0];
@@ -305,7 +324,7 @@ export async function POST(req: Request) {
   msgs.push({ role: "tool", tool_call_id: toolCall.id, name, content: toolResult });
 
     const final = await openRouterChat(msgs);
-    return NextResponse.json({ content: final.content || "" });
+    return NextResponse.json({ content: sanitizeAssistantOutput(final.content || "") });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
     const hint =

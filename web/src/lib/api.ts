@@ -41,6 +41,11 @@ export type Prediction = {
   confidence: number;
   lambda_home: number;
   lambda_away: number;
+  scorelines_top?: Array<{ home_goals: number; away_goals: number; p: number }>;
+  p_over_2_5?: number;
+  p_under_2_5?: number;
+  p_btts_yes?: number;
+  p_btts_no?: number;
   factors: string[];
   ev_home?: number;
   ev_draw?: number;
