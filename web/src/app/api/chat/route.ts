@@ -89,6 +89,34 @@ export async function POST(req: Request) {
         },
       },
     },
+    {
+      type: "function",
+      function: {
+        name: "upsert_odds",
+        description: "写入或更新某些比赛的胜平负赔率（fixture_id 对应 /api/fixtures 返回的 id），随后可获取带 EV/Kelly 的预测",
+        parameters: {
+          type: "object",
+          properties: {
+            date: { type: "string", description: "YYYY-MM-DD（可选，用于随后拉取预测）" },
+            items: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  fixture_id: { type: "number" },
+                  odds_home: { type: "number" },
+                  odds_draw: { type: "number" },
+                  odds_away: { type: "number" },
+                  bookmaker: { type: "string" },
+                },
+                required: ["fixture_id", "odds_home", "odds_draw", "odds_away"],
+              },
+            },
+          },
+          required: ["items"],
+        },
+      },
+    },
   ];
 
     const first = await openRouterChat(msgs, tools);
@@ -160,6 +188,30 @@ export async function POST(req: Request) {
       { method: "POST" }
     );
     toolResult = await r.text();
+  } else if (name === "upsert_odds") {
+    const base = new URL(req.url).origin;
+    const items = Array.isArray(args.items) ? args.items : [];
+    if (!items.length) {
+      toolResult = JSON.stringify({ error: "missing items[]" });
+    } else {
+      const ur = await fetch(`${base}/api/odds/upsert`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ odds: items }),
+      });
+      const utxt = await ur.text();
+      if (args.date) {
+        const pr = await fetch(`${base}/api/predictions`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ date: args.date }),
+        });
+        const ptxt = await pr.text();
+        toolResult = JSON.stringify({ upsert_result: utxt, predictions: ptxt });
+      } else {
+        toolResult = utxt;
+      }
+    }
   } else {
     toolResult = JSON.stringify({ error: "unknown tool" });
   }
