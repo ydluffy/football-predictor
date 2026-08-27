@@ -63,6 +63,12 @@ The sporttery router likewise owns its request models, CSV boundary, parsing,
 editor endpoint, and route-specific path resolution; `main.py` only registers
 the router and re-exports compatibility symbols.
 
+Research Copilot analysis and command behavior belongs in
+`src/api/services/research_copilot.py`. It must remain independent of FastAPI;
+route modules receive its functions explicitly, while `main.py` may re-export
+them temporarily for compatibility. Service tests use isolated artifact roots
+and must not depend on mutable repository outputs.
+
 Pytest treats deprecations, future warnings, and ambiguous date parsing warnings
 as errors. Resolve a warning at its source instead of suppressing it in a test.
 

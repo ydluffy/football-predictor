@@ -43,4 +43,4 @@ def test_api_main_does_not_regain_inline_html_pages() -> None:
     source = Path(api_main.__file__).read_text(encoding="utf-8")
 
     assert "<!doctype html>" not in source.lower()
-    assert len(source.splitlines()) < 1100
+    assert len(source.splitlines()) < 750
