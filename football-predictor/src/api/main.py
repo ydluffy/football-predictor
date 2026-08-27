@@ -1,6 +1,8 @@
 ﻿from __future__ import annotations
 
 import os
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Literal
@@ -11,6 +13,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel
 
+from api.routes.operations import RunExperimentRequest, build_operations_router
 from config.settings import ensure_project_dirs, get_settings
 from features.basic_features import build_basic_features
 from ingest.load_data import load_matches
@@ -193,18 +196,6 @@ class SportteryPasteParseResponse(BaseModel):
     rows: list[dict[str, str]]
 
 
-app = FastAPI(title="football-predictor", version="0.1.0")
-
-_origins = os.getenv("CORS_ALLOW_ORIGINS") or "http://localhost:3000,http://127.0.0.1:3000"
-allow_origins = [o.strip() for o in _origins.split(",") if o.strip()]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=allow_origins,
-    allow_credentials=True,
-    allow_methods=["*"] ,
-    allow_headers=["*"],
-)
-
 _MODEL: Any | None = None
 _MODEL_PATH: Path | None = None
 
@@ -308,8 +299,8 @@ def _sporttery_rows_to_frame(
     )
 
 
-@app.on_event("startup")
-def _startup() -> None:
+@asynccontextmanager
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     global _MODEL, _MODEL_PATH
     ensure_project_dirs()
     configure_logger()
@@ -328,11 +319,20 @@ def _startup() -> None:
         log.info("loaded_model_path={}", str(model_path))
     except Exception as e:
         log.warning("model_load_failed={}", str(e))
+    yield
 
 
-@app.get("/health")
-def health() -> dict[str, object]:
-    return {"ok": True, "model_loaded": _MODEL is not None, "model_path": str(_MODEL_PATH) if _MODEL_PATH else None}
+app = FastAPI(title="football-predictor", version="0.1.0", lifespan=lifespan)
+
+_origins = os.getenv("CORS_ALLOW_ORIGINS") or "http://localhost:3000,http://127.0.0.1:3000"
+allow_origins = [o.strip() for o in _origins.split(",") if o.strip()]
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=allow_origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.get(
@@ -1449,33 +1449,19 @@ def _try_handle_natural_language(text: str) -> str | None:
     return None
 
 
-@app.get("/copilot/artifacts")
-def copilot_artifacts() -> dict[str, object]:
-    return _default_artifacts()
-
-
-@app.get("/copilot/analyze")
-def copilot_analyze() -> dict[str, object]:
-    return analyze_latest_run()
-
-
-@app.get("/copilot/explain-high-brier")
-def copilot_explain_high_brier() -> dict[str, object]:
-    return explain_high_brier()
-
-
-class RunExperimentRequest(BaseModel):
-    command_text: str
-
-
-@app.post("/copilot/run")
-def copilot_run(req: RunExperimentRequest) -> dict[str, object]:
-    return run_experiment(req.command_text)
-
-
-@app.get("/copilot/status")
-def copilot_status() -> dict[str, object]:
-    return show_system_status()
+app.include_router(
+    build_operations_router(
+        model_status=lambda: {
+            "model_loaded": _MODEL is not None,
+            "model_path": str(_MODEL_PATH) if _MODEL_PATH else None,
+        },
+        artifacts=_default_artifacts,
+        analyze=analyze_latest_run,
+        explain_high_brier=explain_high_brier,
+        run_experiment=run_experiment,
+        system_status=show_system_status,
+    )
+)
 
 
 # Command router in chat: support /analyze, /explain-brier, /run <text>, /status

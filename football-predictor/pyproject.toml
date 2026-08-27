@@ -35,3 +35,8 @@ where = ["src"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+filterwarnings = [
+  "error::DeprecationWarning",
+  "error::FutureWarning",
+  "error:Could not infer format.*:UserWarning",
+]

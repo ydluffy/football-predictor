@@ -50,3 +50,14 @@ Prefer reviewable commits in this order:
 Do not combine generated data refreshes with implementation changes. Before a
 commit, run `git status --short`, inspect staged changes with `git diff --cached`,
 and run the relevant automated tests.
+
+## API and warning boundaries
+
+Use FastAPI's lifespan context for startup and shutdown work; deprecated event
+decorators are rejected by the test warning policy. Keep application assembly
+in `src/api/main.py`, and place cohesive endpoint groups in `src/api/routes`.
+Router modules receive service callables explicitly so they can be tested
+without starting databases, loading models, or calling external services.
+
+Pytest treats deprecations, future warnings, and ambiguous date parsing warnings
+as errors. Resolve a warning at its source instead of suppressing it in a test.

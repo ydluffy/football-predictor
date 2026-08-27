@@ -40,8 +40,14 @@ From the repository root:
 GitHub Actions runs two independent jobs on pushes and pull requests:
 
 - Python 3.12: install `football-predictor[dev]` and run the complete pytest suite.
+  Deprecation warnings, future warnings, and ambiguous date parsing warnings are
+  treated as test failures.
 - Node.js 22: install from `package-lock.json`, then run ESLint, TypeScript
   checking, and the optimized Next.js production build.
+
+FastAPI application assembly remains in `football-predictor/src/api/main.py`.
+Independent endpoint groups belong under `football-predictor/src/api/routes/`
+and receive their service dependencies explicitly through router factories.
 
 ## Local verification
 
