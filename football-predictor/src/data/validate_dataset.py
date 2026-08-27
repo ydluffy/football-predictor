@@ -9,6 +9,7 @@ import pandas as pd
 from pathlib import Path
 
 from config.settings import ensure_project_dirs, get_settings
+from data.transform_rules import parse_match_dates
 
 
 def _feature_version_fields(feature_version: str) -> tuple[list[str], list[str]]:
@@ -18,7 +19,7 @@ def _feature_version_fields(feature_version: str) -> tuple[list[str], list[str]]
         optional = ["date", "league", "home_team", "away_team"]
     elif fv == "v2":
         optional = ["date", "league", "home_team", "away_team", "xg_home", "xg_away", "injury_flag", "line_move"]
-    elif fv == "v3":
+    elif fv in {"v3", "v4", "v5", "v6", "v7", "v8"}:
         optional = [
             "date",
             "league",
@@ -53,8 +54,10 @@ def _feature_version_fields(feature_version: str) -> tuple[list[str], list[str]]
             "away_xga_last_2",
             "away_xga_last_3",
         ]
+        if fv in {"v4", "v5", "v6", "v7", "v8"}:
+            optional.extend(["home_goals", "away_goals"])
     else:
-        raise ValueError("feature_version 仅支持 v1/v2/v3")
+        raise ValueError("feature_version 仅支持 v1/v2/v3/v4/v5/v6/v7/v8")
     return required, optional
 
 
@@ -73,7 +76,7 @@ def _generate_match_id_series(df: pd.DataFrame) -> pd.Series | None:
     if not needed <= set(df.columns):
         return None
 
-    date_key = pd.to_datetime(df["date"], errors="coerce").dt.date.astype("string")
+    date_key = parse_match_dates(df["date"]).dt.date.astype("string")
     league_key = df["league"].map(_normalize_key_part).astype("string")
     home_key = df["home_team"].map(_normalize_key_part).astype("string")
     away_key = df["away_team"].map(_normalize_key_part).astype("string")
@@ -137,6 +140,11 @@ def validate_matches_dataset(
 
     required_fields_missing = [c for c in required if c not in df_work.columns]
     optional_fields_missing = [c for c in optional if c not in df_work.columns]
+    required_field_null_counts = {
+        c: int(df_work[c].isna().sum())
+        for c in required
+        if c in df_work.columns and int(df_work[c].isna().sum()) > 0
+    }
 
     row_count = int(len(df_work))
     duplicate_match_id_count = 0
@@ -146,7 +154,7 @@ def validate_matches_dataset(
 
     parseable_date_ratio = 0.0
     if row_count and "date" in df_work.columns:
-        dt = pd.to_datetime(df_work["date"], errors="coerce")
+        dt = parse_match_dates(df_work["date"])
         parseable_date_ratio = float(dt.notna().sum() / row_count)
 
     missing = build_missing_report(df_work)
@@ -175,10 +183,12 @@ def validate_matches_dataset(
         "feature_version": str(feature_version),
         "row_count": row_count,
         "required_fields_missing": required_fields_missing,
+        "required_field_null_counts": required_field_null_counts,
         "optional_fields_missing": optional_fields_missing,
         "duplicate_match_id_count": duplicate_match_id_count,
         "parseable_date_ratio": parseable_date_ratio,
         "match_id_generated": bool(match_id_generated),
+        "is_trainable": not required_fields_missing and not required_field_null_counts and row_count > 0,
     }
 
     ensure_project_dirs()

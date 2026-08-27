@@ -139,6 +139,36 @@ def test_model_trainer_passes_use_verifier_flag(monkeypatch, tmp_path):
     assert called["cmd"][idx + 1] == "true"
 
 
+def test_model_trainer_passes_real_data_path(monkeypatch, tmp_path):
+    root = tmp_path / "football-predictor"
+    monkeypatch.setenv("FOOTBALL_PREDICTOR_ROOT", str(root))
+    get_settings.cache_clear()
+    called = {}
+
+    def _fake_run(cmd, cwd=None, env=None, capture_output=None, text=None):
+        called["cmd"] = list(cmd)
+        return SimpleNamespace(returncode=0, stdout='{"brier": 0.1, "logloss": 0.2}\n', stderr="")
+
+    monkeypatch.setattr("research_director.agents.model_trainer_agent.subprocess.run", _fake_run)
+    data_path = root / "data" / "processed" / "historical.csv"
+    agent = ModelTrainerAgent()
+    res = agent.execute(
+        context={
+            "run_id": "real-train",
+            "run_dir": str(root / "artifacts" / "research_director" / "runs" / "real-train"),
+            "model_type": "logit",
+            "feature_version": "v4",
+            "matches_path": str(data_path),
+            "isolate": False,
+        },
+        gate=SimpleNamespace(allow_high_risk=True),
+    )
+
+    assert res.status == "completed"
+    idx = called["cmd"].index("--data-path")
+    assert called["cmd"][idx + 1] == str(data_path)
+
+
 def test_optimizer_reads_model_compare_feature_compare_and_error_analysis(monkeypatch, tmp_path):
     root = tmp_path / "football-predictor"
     monkeypatch.setenv("FOOTBALL_PREDICTOR_ROOT", str(root))

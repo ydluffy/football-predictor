@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import os
 from datetime import datetime
@@ -31,6 +31,11 @@ from p0.poisson import compute_lambdas
 from p0.poisson import compute_team_averages
 from p0.poisson import confidence_from_probs
 from p0.poisson import predict_1x2
+from world_cup.sporttery_markets import append_sporttery_market_history
+from world_cup.sporttery_markets import build_sporttery_template_from_fixtures
+from world_cup.sporttery_markets import load_sporttery_handicap_markets
+from world_cup.sporttery_markets import parse_sporttery_paste_text
+from world_cup.sporttery_markets import parse_home_handicap
 
 
 def _load_dotenv_if_present(path: Path) -> None:
@@ -127,6 +132,67 @@ class P0PredictionsResponse(BaseModel):
     predictions: list[P0Prediction]
 
 
+class SportteryMarketRow(BaseModel):
+    date: str
+    match_id: str
+    match_number: str
+    home_team: str
+    away_team: str
+    home_handicap_raw: str
+    home_handicap: float | None
+    is_filled: bool
+    source: str
+    updated_at: str
+    notes: str
+
+
+class SportteryMarketsResponse(BaseModel):
+    date: str
+    path: str
+    exists: bool
+    count: int
+    filled_count: int
+    rows: list[SportteryMarketRow]
+
+
+class SportteryMarketSaveRow(BaseModel):
+    date: str
+    match_id: str = ""
+    match_number: str = ""
+    home_team: str
+    away_team: str
+    home_handicap: str = ""
+    source: str = "sporttery_manual"
+    updated_at: str = ""
+    notes: str = ""
+
+
+class SportteryMarketSaveRequest(BaseModel):
+    date: str
+    rows: list[SportteryMarketSaveRow]
+    snapshot_type: str = "latest"
+    captured_at: str = ""
+
+
+class SportteryMarketSaveResponse(BaseModel):
+    ok: bool
+    date: str
+    path: str
+    history_path: str
+    count: int
+    filled_count: int
+    history_count: int
+
+
+class SportteryPasteParseRequest(BaseModel):
+    text: str
+
+
+class SportteryPasteParseResponse(BaseModel):
+    count: int
+    rows: list[dict[str, str]]
+
+
 app = FastAPI(title="football-predictor", version="0.1.0")
 
 _origins = os.getenv("CORS_ALLOW_ORIGINS") or "http://localhost:3000,http://127.0.0.1:3000"
@@ -170,6 +236,78 @@ def _load_or_train_model() -> tuple[BaselineLogitModel, Path]:
     return model, saved
 
 
+def _project_root() -> Path:
+    return Path(__file__).resolve().parents[2]
+
+
+def _sporttery_market_path(run_date: str) -> Path:
+    return _project_root() / "data" / "manual" / f"sporttery_handicap_markets_{run_date}.csv"
+
+
+def _sporttery_market_history_path() -> Path:
+    return _project_root() / "data" / "manual" / "sporttery_handicap_market_history.csv"
+
+
+def _sporttery_template_rows(run_date: str) -> pd.DataFrame:
+    fixtures_path = (
+        _project_root()
+        / "data"
+        / "player_level"
+        / "espn_world_cup_2026"
+        / "fixtures.csv"
+    )
+    fixtures = pd.read_csv(fixtures_path)
+    return build_sporttery_template_from_fixtures(fixtures, as_of_date=run_date)
+
+
+def _raw_sporttery_file(path: Path, run_date: str) -> tuple[pd.DataFrame, bool]:
+    if path.exists():
+        return pd.read_csv(path).fillna(""), True
+    return _sporttery_template_rows(run_date).fillna(""), False
+
+
+def _sporttery_rows_to_frame(
+    rows: list[SportteryMarketSaveRow],
+    *,
+    run_date: str,
+) -> pd.DataFrame:
+    records = []
+    for row in rows:
+        row_date = str(pd.Timestamp(row.date).date())
+        if row_date != run_date:
+            raise ValueError(f"row date {row_date} does not match request date {run_date}")
+        handicap = row.home_handicap.strip()
+        if handicap:
+            parse_home_handicap(handicap)
+        records.append(
+            {
+                "date": row_date,
+                "match_id": row.match_id.strip(),
+                "match_number": row.match_number.strip(),
+                "home_team": row.home_team.strip(),
+                "away_team": row.away_team.strip(),
+                "home_handicap": handicap,
+                "source": row.source.strip() or "sporttery_manual",
+                "updated_at": row.updated_at.strip(),
+                "notes": row.notes.strip(),
+            }
+        )
+    return pd.DataFrame(
+        records,
+        columns=[
+            "date",
+            "match_id",
+            "match_number",
+            "home_team",
+            "away_team",
+            "home_handicap",
+            "source",
+            "updated_at",
+            "notes",
+        ],
+    )
+
+
 @app.on_event("startup")
 def _startup() -> None:
     global _MODEL, _MODEL_PATH
@@ -195,6 +333,339 @@ def _startup() -> None:
 @app.get("/health")
 def health() -> dict[str, object]:
     return {"ok": True, "model_loaded": _MODEL is not None, "model_path": str(_MODEL_PATH) if _MODEL_PATH else None}
+
+
+@app.get(
+    "/world-cup/sporttery/handicap-markets",
+    response_model=SportteryMarketsResponse,
+)
+def world_cup_sporttery_handicap_markets(date: str) -> SportteryMarketsResponse:
+    run_date = str(pd.Timestamp(date).date())
+    path = _sporttery_market_path(run_date)
+    raw, exists = _raw_sporttery_file(path, run_date)
+    parsed_by_key: dict[tuple[str, str, str], dict[str, object]] = {}
+    if exists:
+        try:
+            parsed = load_sporttery_handicap_markets(path)
+        except Exception as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+        parsed_by_key = {
+            (str(row["date"]), str(row["home_team"]), str(row["away_team"])): row.to_dict()
+            for _, row in parsed.iterrows()
+        }
+
+    rows: list[SportteryMarketRow] = []
+    for _, row in raw.iterrows():
+        raw_handicap = str(row.get("home_handicap", "") or "").strip()
+        key = (
+            str(pd.Timestamp(row["date"]).date()),
+            str(row.get("home_team", "")),
+            str(row.get("away_team", "")),
+        )
+        parsed_row = parsed_by_key.get(key, {})
+        rows.append(
+            SportteryMarketRow(
+                date=key[0],
+                match_id=str(row.get("match_id", "") or ""),
+                match_number=str(row.get("match_number", "") or ""),
+                home_team=key[1],
+                away_team=key[2],
+                home_handicap_raw=raw_handicap,
+                home_handicap=(
+                    float(parsed_row["home_handicap"])
+                    if "home_handicap" in parsed_row and raw_handicap
+                    else None
+                ),
+                is_filled=bool(raw_handicap),
+                source=str(row.get("source", "") or ""),
+                updated_at=str(row.get("updated_at", "") or ""),
+                notes=str(row.get("notes", "") or ""),
+            )
+        )
+    filled_count = sum(1 for row in rows if row.is_filled)
+    return SportteryMarketsResponse(
+        date=run_date,
+        path=str(path),
+        exists=exists,
+        count=len(rows),
+        filled_count=filled_count,
+        rows=rows,
+    )
+
+
+@app.post(
+    "/world-cup/sporttery/handicap-markets",
+    response_model=SportteryMarketSaveResponse,
+)
+def save_world_cup_sporttery_handicap_markets(
+    request: SportteryMarketSaveRequest,
+) -> SportteryMarketSaveResponse:
+    run_date = str(pd.Timestamp(request.date).date())
+    try:
+        frame = _sporttery_rows_to_frame(request.rows, run_date=run_date)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    path = _sporttery_market_path(run_date)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    frame.to_csv(path, index=False, encoding="utf-8-sig")
+    history = append_sporttery_market_history(
+        _sporttery_market_history_path(),
+        frame,
+        snapshot_type=request.snapshot_type.strip() or "latest",
+        captured_at=request.captured_at.strip(),
+    )
+    filled_count = int(frame["home_handicap"].astype(str).str.strip().ne("").sum())
+    return SportteryMarketSaveResponse(
+        ok=True,
+        date=run_date,
+        path=str(path),
+        history_path=str(_sporttery_market_history_path()),
+        count=int(len(frame)),
+        filled_count=filled_count,
+        history_count=int(len(history)),
+    )
+
+
+@app.post(
+    "/world-cup/sporttery/parse-paste",
+    response_model=SportteryPasteParseResponse,
+)
+def parse_world_cup_sporttery_paste(
+    request: SportteryPasteParseRequest,
+) -> SportteryPasteParseResponse:
+    rows = parse_sporttery_paste_text(request.text)
+    return SportteryPasteParseResponse(count=len(rows), rows=rows)
+
+
+@app.get("/world-cup/sporttery/editor", response_class=HTMLResponse)
+def world_cup_sporttery_editor() -> HTMLResponse:
+    html = """
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>ä½“å½©è®©çƒç›˜ç¼–è¾‘å™¨</title>
+  <style>
+    body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; background: #f6f8fb; color: #1f2937; }
+    header { padding: 18px 24px; background: #0f172a; color: #fff; }
+    header h1 { margin: 0; font-size: 22px; }
+    header p { margin: 6px 0 0; color: #cbd5e1; }
+    main { max-width: 1180px; margin: 22px auto; padding: 0 18px 36px; }
+    .toolbar { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; margin-bottom: 14px; }
+    input, textarea { box-sizing: border-box; width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 8px; font: inherit; background: #fff; }
+    input:focus, textarea:focus { outline: 2px solid #93c5fd; border-color: #2563eb; }
+    input[type="date"] { width: 180px; }
+    button { border: 0; border-radius: 8px; padding: 9px 14px; font-weight: 700; cursor: pointer; }
+    .primary { background: #2563eb; color: #fff; }
+    .secondary { background: #e2e8f0; color: #0f172a; }
+    .danger { background: #fee2e2; color: #991b1b; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 14px; box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06); overflow: hidden; }
+    .summary { padding: 14px 16px; border-bottom: 1px solid #e5e7eb; display: flex; gap: 16px; flex-wrap: wrap; color: #475569; }
+    table { width: 100%; border-collapse: collapse; }
+    th, td { border-bottom: 1px solid #e5e7eb; padding: 9px; vertical-align: top; }
+    th { background: #f8fafc; text-align: left; font-size: 13px; color: #475569; }
+    td { font-size: 14px; }
+    .small { width: 105px; }
+    .medium { width: 150px; }
+    .handicap { width: 130px; }
+    .notes { min-width: 180px; }
+    .status { margin-top: 12px; padding: 10px 12px; border-radius: 10px; display: none; }
+    .ok { display: block; background: #dcfce7; color: #166534; }
+    .err { display: block; background: #fee2e2; color: #991b1b; }
+    .hint { margin: 12px 0; color: #64748b; line-height: 1.6; }
+    code { background: #eef2ff; color: #3730a3; padding: 2px 5px; border-radius: 5px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ä½“å½©è®©çƒç›˜ç¼–è¾‘å™¨</h1>
+    <p>å¡«å†™ä¸­å›½ä½“å½©ç«žå½©è¶³çƒè®©çƒèƒœå¹³è´Ÿç›˜å£ï¼Œä¿å­˜åŽæ—¥æŠ¥æµæ°´çº¿ä¼šä¼˜å…ˆä½¿ç”¨è¿™äº›çœŸå®žç›˜å£ã€‚</p>
+  </header>
+  <main>
+    <div class="toolbar">
+      <input id="date" type="date" />
+      <input id="snapshotType" value="latest" placeholder="ç›˜å£é˜¶æ®µï¼šopening/live/closing" />
+      <input id="capturedAt" placeholder="é‡‡é›†æ—¶é—´ï¼Œå¯ç•™ç©ºè‡ªåŠ¨ç”Ÿæˆ" />
+      <button class="secondary" id="load">åŠ è½½å½“å¤©æ¯”èµ›</button>
+      <button class="primary" id="save">ä¿å­˜ CSV</button>
+      <button class="danger" id="clear">æ¸…ç©ºç›˜å£åˆ—</button>
+    </div>
+    <div class="hint">
+      è®©çƒå†™æ³•æ”¯æŒï¼š<code>ä¸»é˜Ÿè®©1çƒ</code>ã€<code>ä¸»é˜Ÿå—è®©1çƒ</code>ã€<code>å¹³æ‰‹ç›˜</code>ã€<code>-1</code>ã€<code>+1</code>ã€<code>0</code>ã€‚
+      è´Ÿæ•°ä»£è¡¨ä¸»é˜Ÿè®©çƒï¼Œæ­£æ•°ä»£è¡¨ä¸»é˜Ÿå—è®©ã€‚è¯·åªå¡«å·²æ ¸éªŒçš„å®˜æ–¹ä½“å½©ç›˜å£ã€‚
+    </div>
+    <div class="card" style="margin-bottom:14px; padding:14px 16px;">
+      <strong>批量粘贴盘口</strong>
+      <p class="hint">可从网页或 Excel 复制多行，例如：<code>周四001    Japan    Sweden    主队让1球</code>。解析后会按竞彩编号、match_id 或主客队填入下方表格。</p>
+      <textarea id="pasteBox" rows="5" placeholder="周四001    Japan    Sweden    主队让1球&#10;周四002    Ecuador    Germany    平手盘"></textarea>
+      <div class="toolbar" style="margin-top:10px; margin-bottom:0;">
+        <button class="secondary" id="applyPaste">解析并填入</button>
+        <button class="secondary" id="clearPaste">清空粘贴框</button>
+      </div>
+    </div>
+    <div id="status" class="status"></div>
+    <div class="card">
+      <div class="summary" id="summary">å°šæœªåŠ è½½</div>
+      <table>
+        <thead>
+          <tr>
+            <th>æ—¥æœŸ</th>
+            <th>match_id</th>
+            <th>ç«žå½©ç¼–å·</th>
+            <th>ä¸»é˜Ÿ</th>
+            <th>å®¢é˜Ÿ</th>
+            <th>è®©çƒç›˜</th>
+            <th>æ¥æº</th>
+            <th>æ›´æ–°æ—¶é—´</th>
+            <th>å¤‡æ³¨</th>
+          </tr>
+        </thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </main>
+  <script>
+    const dateInput = document.getElementById('date');
+    const rowsEl = document.getElementById('rows');
+    const summaryEl = document.getElementById('summary');
+    const statusEl = document.getElementById('status');
+    const today = new Date().toISOString().slice(0, 10);
+    dateInput.value = today;
+
+    function setStatus(text, ok = true) {
+      statusEl.textContent = text;
+      statusEl.className = 'status ' + (ok ? 'ok' : 'err');
+    }
+
+    function cellInput(value, cls, placeholder = '') {
+      const escaped = String(value || '').replaceAll('&', '&amp;').replaceAll('"', '&quot;').replaceAll('<', '&lt;');
+      return `<input class="${cls}" value="${escaped}" placeholder="${placeholder}" />`;
+    }
+
+    function render(data) {
+      summaryEl.textContent = `æ—¥æœŸ ${data.date} | æ–‡ä»¶ ${data.exists ? 'å·²å­˜åœ¨' : 'æœªåˆ›å»º'} | å·²å¡« ${data.filled_count}/${data.count} | ${data.path}`;
+      rowsEl.innerHTML = data.rows.map(row => `
+        <tr>
+          <td data-field="date">${row.date}</td>
+          <td data-field="match_id">${row.match_id || ''}</td>
+          <td>${cellInput(row.match_number, 'match_number small', 'å‘¨å››001')}</td>
+          <td data-field="home_team">${row.home_team}</td>
+          <td data-field="away_team">${row.away_team}</td>
+          <td>${cellInput(row.home_handicap_raw, 'home_handicap handicap', 'ä¸»é˜Ÿè®©1çƒ')}</td>
+          <td>${cellInput(row.source || 'sporttery_manual', 'source medium')}</td>
+          <td>${cellInput(row.updated_at, 'updated_at medium', '2026-06-25 10:00')}</td>
+          <td>${cellInput(row.notes, 'notes')}</td>
+        </tr>
+      `).join('');
+    }
+
+    async function loadRows() {
+      statusEl.className = 'status';
+      const date = dateInput.value;
+      const res = await fetch(`/world-cup/sporttery/handicap-markets?date=${encodeURIComponent(date)}`);
+      if (!res.ok) {
+        setStatus(await res.text(), false);
+        return;
+      }
+      render(await res.json());
+    }
+
+    function collectRows() {
+      return [...rowsEl.querySelectorAll('tr')].map(tr => ({
+        date: tr.querySelector('[data-field="date"]').textContent.trim(),
+        match_id: tr.querySelector('[data-field="match_id"]').textContent.trim(),
+        match_number: tr.querySelector('.match_number').value.trim(),
+        home_team: tr.querySelector('[data-field="home_team"]').textContent.trim(),
+        away_team: tr.querySelector('[data-field="away_team"]').textContent.trim(),
+        home_handicap: tr.querySelector('.home_handicap').value.trim(),
+        source: tr.querySelector('.source').value.trim() || 'sporttery_manual',
+        updated_at: tr.querySelector('.updated_at').value.trim(),
+        notes: tr.querySelector('.notes').value.trim(),
+      }));
+    }
+
+    async function saveRows() {
+      const payload = {
+        date: dateInput.value,
+        snapshot_type: document.getElementById('snapshotType').value.trim() || 'latest',
+        captured_at: document.getElementById('capturedAt').value.trim(),
+        rows: collectRows()
+      };
+      const res = await fetch('/world-cup/sporttery/handicap-markets', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      });
+      const text = await res.text();
+      if (!res.ok) {
+        setStatus(text, false);
+        return;
+      }
+      const data = JSON.parse(text);
+      setStatus(`å·²ä¿å­˜ï¼š${data.filled_count}/${data.count} æ¡ç›˜å£ï¼Œæœ€æ–°æ–‡ä»¶ ${data.path}ï¼ŒåŽ†å²ç´¯è®¡ ${data.history_count} æ¡`);
+      await loadRows();
+    }
+
+    function normalizeText(value) {
+      return String(value || "").trim().toLowerCase();
+    }
+
+    function applyParsedRows(parsedRows) {
+      let applied = 0;
+      const trs = [...rowsEl.querySelectorAll("tr")];
+      for (const parsed of parsedRows) {
+        const parsedMatchNumber = normalizeText(parsed.match_number);
+        const parsedHome = normalizeText(parsed.home_team);
+        const parsedAway = normalizeText(parsed.away_team);
+        const target = trs.find(tr => {
+          const matchNumber = normalizeText(tr.querySelector(".match_number").value);
+          const matchId = normalizeText(tr.querySelector('[data-field="match_id"]').textContent);
+          const home = normalizeText(tr.querySelector('[data-field="home_team"]').textContent);
+          const away = normalizeText(tr.querySelector('[data-field="away_team"]').textContent);
+          return (parsedMatchNumber && (parsedMatchNumber === matchNumber || parsedMatchNumber === matchId))
+            || (parsedHome && parsedAway && home === parsedHome && away === parsedAway);
+        });
+        if (!target) continue;
+        if (parsed.match_number) target.querySelector(".match_number").value = parsed.match_number;
+        target.querySelector(".home_handicap").value = parsed.home_handicap || "";
+        target.querySelector(".source").value = "sporttery_paste";
+        applied += 1;
+      }
+      return applied;
+    }
+
+    async function parsePasteAndApply() {
+      const text = document.getElementById("pasteBox").value;
+      const res = await fetch("/world-cup/sporttery/parse-paste", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        setStatus(JSON.stringify(body), false);
+        return;
+      }
+      const applied = applyParsedRows(body.rows || []);
+      setStatus(`解析 ${body.count} 条，成功填入 ${applied} 条。请核对后保存。`, applied > 0);
+    }
+
+    document.getElementById('load').addEventListener('click', loadRows);
+    document.getElementById('save').addEventListener('click', saveRows);
+    document.getElementById('applyPaste').addEventListener('click', parsePasteAndApply);
+    document.getElementById('clearPaste').addEventListener('click', () => {
+      document.getElementById('pasteBox').value = '';
+    });
+    document.getElementById('clear').addEventListener('click', () => {
+      rowsEl.querySelectorAll('.home_handicap').forEach(input => input.value = '');
+    });
+    loadRows();
+  </script>
+</body>
+</html>
+    """
+    return HTMLResponse(html)
 
 
 @app.get("/predict", response_model=PredictResponse)
@@ -254,7 +725,7 @@ def _call_openai_chat(messages: list[dict[str, str]], model: str, tools: list[di
             if m.get("role") == "user":
                 last = m.get("content") or ""
                 break
-        return f"[mock] 我已收到你的问题：{last[:120]} ...", []
+        return f"[mock] æˆ‘å·²æ”¶åˆ°ä½ çš„é—®é¢˜ï¼š{last[:120]} ...", []
 
     payload_dict = {"model": model, "messages": messages}
     if tools:
@@ -283,10 +754,10 @@ def _call_openai_chat(messages: list[dict[str, str]], model: str, tools: list[di
 @app.post("/chat", response_model=ChatResponse)
 def chat(req: ChatRequest) -> ChatResponse:
     sys_prompt = (
-        "你是本仓库的足球预测研究员 Copilot。"
-        "你需要帮助用户完成：获取今日赛程、运行预测和训练实验、训练评估、指标解读、数据流审计、下一步实验建议。"
-        "回答要简洁、可执行，并尽量引用产物路径与关键数字。你可以使用提供的工具（函数调用）来执行实际操作并获取数据。"
-        "为了提供更好的用户体验，请你在回复中广泛使用 Markdown 格式，包括：表格（如展示比赛列表和指标）、加粗、列表，并且合理使用相关的 Emoji 图标（如 ⚽, 📈, 📉, 💡, ⚠️ 等）来点缀你的回复，使其美观易读。"
+        "ä½ æ˜¯æœ¬ä»“åº“çš„è¶³çƒé¢„æµ‹ç ”ç©¶å‘˜ Copilotã€‚"
+        "ä½ éœ€è¦å¸®åŠ©ç”¨æˆ·å®Œæˆï¼šèŽ·å–ä»Šæ—¥èµ›ç¨‹ã€è¿è¡Œé¢„æµ‹å’Œè®­ç»ƒå®žéªŒã€è®­ç»ƒè¯„ä¼°ã€æŒ‡æ ‡è§£è¯»ã€æ•°æ®æµå®¡è®¡ã€ä¸‹ä¸€æ­¥å®žéªŒå»ºè®®ã€‚"
+        "å›žç­”è¦ç®€æ´ã€å¯æ‰§è¡Œï¼Œå¹¶å°½é‡å¼•ç”¨äº§ç‰©è·¯å¾„ä¸Žå…³é”®æ•°å­—ã€‚ä½ å¯ä»¥ä½¿ç”¨æä¾›çš„å·¥å…·ï¼ˆå‡½æ•°è°ƒç”¨ï¼‰æ¥æ‰§è¡Œå®žé™…æ“ä½œå¹¶èŽ·å–æ•°æ®ã€‚"
+        "ä¸ºäº†æä¾›æ›´å¥½çš„ç”¨æˆ·ä½“éªŒï¼Œè¯·ä½ åœ¨å›žå¤ä¸­å¹¿æ³›ä½¿ç”¨ Markdown æ ¼å¼ï¼ŒåŒ…æ‹¬ï¼šè¡¨æ ¼ï¼ˆå¦‚å±•ç¤ºæ¯”èµ›åˆ—è¡¨å’ŒæŒ‡æ ‡ï¼‰ã€åŠ ç²—ã€åˆ—è¡¨ï¼Œå¹¶ä¸”åˆç†ä½¿ç”¨ç›¸å…³çš„ Emoji å›¾æ ‡ï¼ˆå¦‚ âš½, ðŸ“ˆ, ðŸ“‰, ðŸ’¡, âš ï¸ ç­‰ï¼‰æ¥ç‚¹ç¼€ä½ çš„å›žå¤ï¼Œä½¿å…¶ç¾Žè§‚æ˜“è¯»ã€‚"
     )
     msgs = [{"role": "system", "content": sys_prompt}] + [{"role": m.role, "content": m.content} for m in req.messages]
     model = (
@@ -304,7 +775,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             "type": "function",
             "function": {
                 "name": "get_today_matches",
-                "description": "获取今天或近期的足球比赛赛程，包括对阵双方、赔率、高级特征等。",
+                "description": "èŽ·å–ä»Šå¤©æˆ–è¿‘æœŸçš„è¶³çƒæ¯”èµ›èµ›ç¨‹ï¼ŒåŒ…æ‹¬å¯¹é˜µåŒæ–¹ã€èµ”çŽ‡ã€é«˜çº§ç‰¹å¾ç­‰ã€‚",
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -316,13 +787,13 @@ def chat(req: ChatRequest) -> ChatResponse:
             "type": "function",
             "function": {
                 "name": "run_experiment",
-                "description": "执行模型训练或预测实验。当用户要求'跑'、'预测'、'训练'或'推单'时调用。",
+                "description": "æ‰§è¡Œæ¨¡åž‹è®­ç»ƒæˆ–é¢„æµ‹å®žéªŒã€‚å½“ç”¨æˆ·è¦æ±‚'è·‘'ã€'é¢„æµ‹'ã€'è®­ç»ƒ'æˆ–'æŽ¨å•'æ—¶è°ƒç”¨ã€‚",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "command_text": {
                             "type": "string",
-                            "description": "用户原始的请求文本，包含如 'logit v1 real' 或 'lightgbm v3' 等指令"
+                            "description": "ç”¨æˆ·åŽŸå§‹çš„è¯·æ±‚æ–‡æœ¬ï¼ŒåŒ…å«å¦‚ 'logit v1 real' æˆ– 'lightgbm v3' ç­‰æŒ‡ä»¤"
                         }
                     },
                     "required": ["command_text"]
@@ -333,7 +804,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             "type": "function",
             "function": {
                 "name": "analyze_latest_run",
-                "description": "分析最近一次实验的结果，包括 Brier、Logloss 和模型建议。",
+                "description": "åˆ†æžæœ€è¿‘ä¸€æ¬¡å®žéªŒçš„ç»“æžœï¼ŒåŒ…æ‹¬ Brierã€Logloss å’Œæ¨¡åž‹å»ºè®®ã€‚",
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -345,7 +816,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             "type": "function",
             "function": {
                 "name": "explain_high_brier",
-                "description": "解释为什么最近的实验 Brier 或 Logloss 分数很高，分析模型的偏差。",
+                "description": "è§£é‡Šä¸ºä»€ä¹ˆæœ€è¿‘çš„å®žéªŒ Brier æˆ– Logloss åˆ†æ•°å¾ˆé«˜ï¼Œåˆ†æžæ¨¡åž‹çš„åå·®ã€‚",
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -357,7 +828,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             "type": "function",
             "function": {
                 "name": "show_system_status",
-                "description": "获取当前系统的模型注册状态、生产模型信息。",
+                "description": "èŽ·å–å½“å‰ç³»ç»Ÿçš„æ¨¡åž‹æ³¨å†ŒçŠ¶æ€ã€ç”Ÿäº§æ¨¡åž‹ä¿¡æ¯ã€‚",
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -369,7 +840,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             "type": "function",
             "function": {
                 "name": "get_backtest_status",
-                "description": "获取最新的回测结果（收益、ROI、回撤等）。",
+                "description": "èŽ·å–æœ€æ–°çš„å›žæµ‹ç»“æžœï¼ˆæ”¶ç›Šã€ROIã€å›žæ’¤ç­‰ï¼‰ã€‚",
                 "parameters": {
                     "type": "object",
                     "properties": {},
@@ -407,7 +878,7 @@ def chat(req: ChatRequest) -> ChatResponse:
             tool_result = _format_backtest_message()
             
         if not tool_result:
-            tool_result = "调用成功，但没有返回结果。"
+            tool_result = "è°ƒç”¨æˆåŠŸï¼Œä½†æ²¡æœ‰è¿”å›žç»“æžœã€‚"
 
         # Append tool result and call LLM again to get final response
         msgs.append({
@@ -437,7 +908,7 @@ def chat_ui() -> HTMLResponse:
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>足球预测研究员 Copilot</title>
+  <title>è¶³çƒé¢„æµ‹ç ”ç©¶å‘˜ Copilot</title>
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <style>
     body { font-family: 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; margin: 0; background-color: #f0f2f5; color: #333; }
@@ -483,17 +954,17 @@ def chat_ui() -> HTMLResponse:
 </head>
 <body>
   <header>
-    <span>⚽</span> 足球预测研究员 Copilot
+    <span>âš½</span> è¶³çƒé¢„æµ‹ç ”ç©¶å‘˜ Copilot
   </header>
   <div id="chat-container">
     <div id="chat">
         <div class="msg assistant">
-            <div class="bubble">你好！我是你的 AI 足球预测助手 🤖。我可以帮你获取今日赛程、运行预测模型、分析回测数据。想了解点什么？</div>
+            <div class="bubble">ä½ å¥½ï¼æˆ‘æ˜¯ä½ çš„ AI è¶³çƒé¢„æµ‹åŠ©æ‰‹ ðŸ¤–ã€‚æˆ‘å¯ä»¥å¸®ä½ èŽ·å–ä»Šæ—¥èµ›ç¨‹ã€è¿è¡Œé¢„æµ‹æ¨¡åž‹ã€åˆ†æžå›žæµ‹æ•°æ®ã€‚æƒ³äº†è§£ç‚¹ä»€ä¹ˆï¼Ÿ</div>
         </div>
     </div>
     <div id="box">
-      <textarea id="input" placeholder="输入你的问题，如：帮我查一下今天有什么比赛，并跑一下预测推荐..."></textarea>
-      <button id="send">发送 🚀</button>
+      <textarea id="input" placeholder="è¾“å…¥ä½ çš„é—®é¢˜ï¼Œå¦‚ï¼šå¸®æˆ‘æŸ¥ä¸€ä¸‹ä»Šå¤©æœ‰ä»€ä¹ˆæ¯”èµ›ï¼Œå¹¶è·‘ä¸€ä¸‹é¢„æµ‹æŽ¨è..."></textarea>
+      <button id="send">å‘é€ ðŸš€</button>
     </div>
   </div>
   <script>
@@ -565,12 +1036,12 @@ def chat_ui() -> HTMLResponse:
         const j = await r.json();
         removeLoading();
         
-        const content = j.content || '⚠️ [error] 无内容';
+        const content = j.content || 'âš ï¸ [error] æ— å†…å®¹';
         addMessage('assistant', content);
         hist.push({role:'assistant', content});
       } catch(e) {
         removeLoading();
-        addMessage('assistant', '❌ [error] ' + e);
+        addMessage('assistant', 'âŒ [error] ' + e);
       } finally {
         sendBtn.disabled = false;
         input.disabled = false;
@@ -623,7 +1094,7 @@ def _default_artifacts() -> dict[str, object]:
     out["reliability_table_path"] = str(s.eval_reliability_table_path)
     out["model_registry_path"] = str(s.research_model_registry_path)
     out["latest_execution_summary_path"] = str(s.research_latest_execution_summary_path)
-    # upgrade_report 在具体 run_dir 下，优先从 latest_execution_summary 的 run_dir 推断
+    # upgrade_report åœ¨å…·ä½“ run_dir ä¸‹ï¼Œä¼˜å…ˆä»Ž latest_execution_summary çš„ run_dir æŽ¨æ–­
     latest = _safe_read_json(s.research_latest_execution_summary_path)
     up_path: Optional[Path] = None
     if isinstance(latest, dict) and latest.get("run_id"):
@@ -658,7 +1129,7 @@ def _summarize_distribution(results: _pd.DataFrame) -> dict[str, object]:
             "D": int((y == "D").sum()),
             "A": int((y == "A").sum()),
         }
-    # 简单偏置判定：单类预测占比 > 0.7 或 avg_p 某一类 > 0.6
+    # ç®€å•åç½®åˆ¤å®šï¼šå•ç±»é¢„æµ‹å æ¯” > 0.7 æˆ– avg_p æŸä¸€ç±» > 0.6
     bias_flags: list[str] = []
     total_pred = float(sum(out["pred_label_counts"].values()))
     if total_pred > 0:
@@ -681,11 +1152,11 @@ def analyze_latest_run() -> dict[str, object]:
     suggestions: list[str] = []
     if metrics:
         if float(metrics.get("brier", 0.0)) > 0.5:
-            suggestions.append("考虑引入校准（sigmoid）并比较 reliability gap")
+            suggestions.append("è€ƒè™‘å¼•å…¥æ ¡å‡†ï¼ˆsigmoidï¼‰å¹¶æ¯”è¾ƒ reliability gap")
         if float(metrics.get("logloss", 0.0)) > 1.0:
-            suggestions.append("尝试更强模型（lightgbm）或升级到 v2/v3 特征")
+            suggestions.append("å°è¯•æ›´å¼ºæ¨¡åž‹ï¼ˆlightgbmï¼‰æˆ–å‡çº§åˆ° v2/v3 ç‰¹å¾")
     if "bias_flags" in dist and dist["bias_flags"]:
-        suggestions.append("检测类别不平衡或赔率分布异常，检查联赛/赛季混合与标签质量")
+        suggestions.append("æ£€æµ‹ç±»åˆ«ä¸å¹³è¡¡æˆ–èµ”çŽ‡åˆ†å¸ƒå¼‚å¸¸ï¼Œæ£€æŸ¥è”èµ›/èµ›å­£æ··åˆä¸Žæ ‡ç­¾è´¨é‡")
     return {
         "n_samples": int(dist.get("n", 0)),
         "brier": float(metrics.get("brier", 0.0)) if metrics else None,
@@ -702,16 +1173,16 @@ def explain_high_brier() -> dict[str, object]:
     dist = _summarize_distribution(results)
     reasons: list[str] = []
     if dist.get("bias_flags"):
-        reasons.append("类别或概率分布偏置（bias_flags 命中）")
-    reasons.append("特征不足：当前 v1 仅赔率，建议采用 v2 加入 xg/injury/line_move")
-    reasons.append("模型表达能力：logit 可能不足，可试 lightgbm 或 stacking")
+        reasons.append("ç±»åˆ«æˆ–æ¦‚çŽ‡åˆ†å¸ƒåç½®ï¼ˆbias_flags å‘½ä¸­ï¼‰")
+    reasons.append("ç‰¹å¾ä¸è¶³ï¼šå½“å‰ v1 ä»…èµ”çŽ‡ï¼Œå»ºè®®é‡‡ç”¨ v2 åŠ å…¥ xg/injury/line_move")
+    reasons.append("æ¨¡åž‹è¡¨è¾¾èƒ½åŠ›ï¼šlogit å¯èƒ½ä¸è¶³ï¼Œå¯è¯• lightgbm æˆ– stacking")
     if metrics and float(metrics.get("brier", 0.0)) > 0.5:
-        reasons.append("未校准：尝试 sigmoid 校准并观察 reliability_table")
+        reasons.append("æœªæ ¡å‡†ï¼šå°è¯• sigmoid æ ¡å‡†å¹¶è§‚å¯Ÿ reliability_table")
     if "actual_label_counts" in dist:
         alc = dist["actual_label_counts"]
         total = sum(alc.values()) or 1
         if max(alc.values()) / total > 0.6:
-            reasons.append("类别不平衡：实际标签分布倾斜，建议在切分/采样上做约束")
+            reasons.append("ç±»åˆ«ä¸å¹³è¡¡ï¼šå®žé™…æ ‡ç­¾åˆ†å¸ƒå€¾æ–œï¼Œå»ºè®®åœ¨åˆ‡åˆ†/é‡‡æ ·ä¸Šåšçº¦æŸ")
     return {"brier": metrics.get("brier") if metrics else None, "reasons": reasons, "distribution": dist}
 
 
@@ -736,7 +1207,7 @@ def _parse_run_experiment(text: str) -> dict[str, str]:
         cal = "sigmoid"
     elif "isotonic" in t:
         cal = "isotonic"
-    if "real" in t or "真实" in t or "今天" in t or "今日" in t or "live" in t:
+    if "real" in t or "çœŸå®ž" in t or "ä»Šå¤©" in t or "ä»Šæ—¥" in t or "live" in t:
         dm = "real"
     return {"model_type": mt, "feature_version": fv, "calibration": cal, "data_mode": dm}
 
@@ -744,7 +1215,7 @@ def _parse_run_experiment(text: str) -> dict[str, str]:
 def run_experiment(command_text: str) -> dict[str, object]:
     cfg = _parse_run_experiment(command_text)
     director = ResearchDirector()
-    wf = "candidate_model_upgrade" if ("upgrade" in command_text.lower() or "晋升" in command_text) else "daily_prediction"
+    wf = "candidate_model_upgrade" if ("upgrade" in command_text.lower() or "æ™‹å‡" in command_text) else "daily_prediction"
     ctx = {
         "model_type": cfg["model_type"],
         "feature_version": cfg["feature_version"],
@@ -840,21 +1311,21 @@ def _format_latest_analysis_message() -> str:
     bias = dist.get("bias_flags") if isinstance(dist.get("bias_flags"), list) else []
     suggestions = a.get("suggestions") if isinstance(a.get("suggestions"), list) else []
     lines = [
-        f"- 样本量(n_samples): {a.get('n_samples')}",
+        f"- æ ·æœ¬é‡(n_samples): {a.get('n_samples')}",
         f"- brier: {_fmt_float(a.get('brier'))}",
         f"- logloss: {_fmt_float(a.get('logloss'))}",
-        f"- 概率均值(avg_p): H={_fmt_float(avg_p.get('home'))}, D={_fmt_float(avg_p.get('draw'))}, A={_fmt_float(avg_p.get('away'))}",
-        f"- 偏置(bias_flags): {', '.join(str(x) for x in bias) if bias else '无明显偏置'}",
-        f"- 产物: {s.eval_metrics_path} | {s.eval_results_path} | {s.eval_reliability_table_path}",
+        f"- æ¦‚çŽ‡å‡å€¼(avg_p): H={_fmt_float(avg_p.get('home'))}, D={_fmt_float(avg_p.get('draw'))}, A={_fmt_float(avg_p.get('away'))}",
+        f"- åç½®(bias_flags): {', '.join(str(x) for x in bias) if bias else 'æ— æ˜Žæ˜¾åç½®'}",
+        f"- äº§ç‰©: {s.eval_metrics_path} | {s.eval_results_path} | {s.eval_reliability_table_path}",
     ]
     if bt.get("summary"):
         sm = bt["summary"]  # type: ignore[assignment]
         lines.append(
-            f"- 回测: n_bets={sm.get('n_bets')} profit={_fmt_float(sm.get('profit'))} roi={_fmt_float(sm.get('roi'))} max_dd={_fmt_float(sm.get('max_drawdown'))} final={_fmt_float(sm.get('final_bankroll'))}"
+            f"- å›žæµ‹: n_bets={sm.get('n_bets')} profit={_fmt_float(sm.get('profit'))} roi={_fmt_float(sm.get('roi'))} max_dd={_fmt_float(sm.get('max_drawdown'))} final={_fmt_float(sm.get('final_bankroll'))}"
         )
-        lines.append(f"- 回测产物: {bt['paths']['summary_path']} | {bt['paths']['bets_path']}")
+        lines.append(f"- å›žæµ‹äº§ç‰©: {bt['paths']['summary_path']} | {bt['paths']['bets_path']}")
     if suggestions:
-        lines.append("- 建议: " + "；".join(str(x) for x in suggestions))
+        lines.append("- å»ºè®®: " + "ï¼›".join(str(x) for x in suggestions))
     return "\n".join(lines)
 
 
@@ -865,8 +1336,8 @@ def _format_high_brier_message() -> str:
     return "\n".join(
         [
             f"- brier: {_fmt_float(x.get('brier'))}",
-            f"- 产物: {s.eval_metrics_path} | {s.eval_results_path} | {s.eval_reliability_table_path}",
-            "- 可能原因:",
+            f"- äº§ç‰©: {s.eval_metrics_path} | {s.eval_results_path} | {s.eval_reliability_table_path}",
+            "- å¯èƒ½åŽŸå› :",
         ]
         + [f"  - {r}" for r in rs]
     )
@@ -878,18 +1349,18 @@ def _format_backtest_message() -> str:
     if not sm:
         return "\n".join(
             [
-                "- 未找到回测产物 summary.json",
-                f"- 期望路径: {bt['paths']['summary_path']}",
-                "- 先运行: python scripts/run_backtest.py --pred-path artifacts/eval/results.csv --data-path data/processed/real_matches_standardized.csv --out-dir artifacts/backtest",
+                "- æœªæ‰¾åˆ°å›žæµ‹äº§ç‰© summary.json",
+                f"- æœŸæœ›è·¯å¾„: {bt['paths']['summary_path']}",
+                "- å…ˆè¿è¡Œ: python scripts/run_backtest.py --pred-path artifacts/eval/results.csv --data-path data/processed/real_matches_standardized.csv --out-dir artifacts/backtest",
             ]
         )
     top = bt.get("by_league_top")
     lines = [
-        f"- 回测: n_bets={sm.get('n_bets')} profit={_fmt_float(sm.get('profit'))} roi={_fmt_float(sm.get('roi'))} hit_rate={_fmt_float(sm.get('hit_rate'))} max_dd={_fmt_float(sm.get('max_drawdown'))} final={_fmt_float(sm.get('final_bankroll'))}",
-        f"- 产物: {bt['paths']['summary_path']} | {bt['paths']['bets_path']} | {bt['paths']['by_league_path']} | {bt['paths']['equity_curve_path']}",
+        f"- å›žæµ‹: n_bets={sm.get('n_bets')} profit={_fmt_float(sm.get('profit'))} roi={_fmt_float(sm.get('roi'))} hit_rate={_fmt_float(sm.get('hit_rate'))} max_dd={_fmt_float(sm.get('max_drawdown'))} final={_fmt_float(sm.get('final_bankroll'))}",
+        f"- äº§ç‰©: {bt['paths']['summary_path']} | {bt['paths']['bets_path']} | {bt['paths']['by_league_path']} | {bt['paths']['equity_curve_path']}",
     ]
     if isinstance(top, list) and top:
-        lines.append("- 联赛Top(按 n_bets): " + "; ".join(f"{r.get('league')} n={r.get('n_bets')} roi={_fmt_float(r.get('roi'))}" for r in top))
+        lines.append("- è”èµ›Top(æŒ‰ n_bets): " + "; ".join(f"{r.get('league')} n={r.get('n_bets')} roi={_fmt_float(r.get('roi'))}" for r in top))
     return "\n".join(lines)
 
 
@@ -916,48 +1387,63 @@ def _format_today_matches_message() -> str:
         client = FootballDataClient()
         today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
         df = client.fetch_today_matches(today)
+
+        if (
+            not df.empty
+            and "is_predictable" in df.columns
+            and not df["is_predictable"].fillna(False).any()
+        ):
+            lines = [f"**ä»Šæ—¥ ({today}) å…¬å¼€èµ›ç¨‹**ï¼š", f"å…±èŽ·å–åˆ° {len(df)} åœºæ¯”èµ›ã€‚"]
+            for _, row in df.iterrows():
+                lines.append(
+                    f"- {row['league']}: {row['home_team']} vs {row['away_team']} ({row['date']})"
+                )
+            out_path = client.save_schedule(df, today)
+            lines.append(f"\næ•°æ®å·²ä¿å­˜è‡³: `{out_path}`")
+            lines.append("å½“å‰æ¥æºä¸å«çœŸå®žèµ”çŽ‡ï¼Œå·²æ ‡è®°ä¸º schedule_onlyï¼Œä¸ä¼šç”¨äºŽæ¨¡åž‹é¢„æµ‹ã€‚")
+            return "\n".join(lines)
         
         if df.empty:
-            return f"今天 ({today}) 没有获取到任何赛程数据。"
+            return f"ä»Šå¤© ({today}) æ²¡æœ‰èŽ·å–åˆ°ä»»ä½•èµ›ç¨‹æ•°æ®ã€‚"
         
-        lines = [f"**今日 ({today}) 实时赛程及高级特征**：", f"共获取到 {len(df)} 场比赛。"]
+        lines = [f"**ä»Šæ—¥ ({today}) å®žæ—¶èµ›ç¨‹åŠé«˜çº§ç‰¹å¾**ï¼š", f"å…±èŽ·å–åˆ° {len(df)} åœºæ¯”èµ›ã€‚"]
         
         for _, row in df.iterrows():
             match_str = f"- {row['league']}: {row['home_team']} vs {row['away_team']} ({row['date']})"
-            stats_str = f"  - 赔率: 主胜 {row['odds_home']}, 平 {row['odds_draw']}, 客胜 {row['odds_away']}"
-            adv_stats_str = f"  - 高级特征: xG主 {row['xg_home']} / xG客 {row['xg_away']}, 赔率变动 {row['line_move']}, 伤停标记 {row['injury_flag']}"
+            stats_str = f"  - èµ”çŽ‡: ä¸»èƒœ {row['odds_home']}, å¹³ {row['odds_draw']}, å®¢èƒœ {row['odds_away']}"
+            adv_stats_str = f"  - é«˜çº§ç‰¹å¾: xGä¸» {row['xg_home']} / xGå®¢ {row['xg_away']}, èµ”çŽ‡å˜åŠ¨ {row['line_move']}, ä¼¤åœæ ‡è®° {row['injury_flag']}"
             lines.extend([match_str, stats_str, adv_stats_str])
             
         out_path = client.save_schedule(df, today)
-        lines.append(f"\n*数据已保存至*: `{out_path}`")
-        lines.append("*提示*: 你可以回复“用这些数据跑预测”来运行 `daily_prediction` 工作流进行今日推单！")
+        lines.append(f"\n*æ•°æ®å·²ä¿å­˜è‡³*: `{out_path}`")
+        lines.append("*æç¤º*: ä½ å¯ä»¥å›žå¤â€œç”¨è¿™äº›æ•°æ®è·‘é¢„æµ‹â€æ¥è¿è¡Œ `daily_prediction` å·¥ä½œæµè¿›è¡Œä»Šæ—¥æŽ¨å•ï¼")
         return "\n".join(lines)
     except Exception as e:
-        return f"[error] 获取今日赛程失败: {e}"
+        return f"[error] èŽ·å–ä»Šæ—¥èµ›ç¨‹å¤±è´¥: {e}"
 
 def _try_handle_natural_language(text: str) -> str | None:
     t = text.strip().lower()
     if not t:
         return None
 
-    if any(k in t for k in ("今天", "今日", "球赛", "赛程", "比赛", "live", "实时")) and not any(k in t for k in ("跑", "训练", "预测", "评估")):
+    if any(k in t for k in ("ä»Šå¤©", "ä»Šæ—¥", "çƒèµ›", "èµ›ç¨‹", "æ¯”èµ›", "live", "å®žæ—¶")) and not any(k in t for k in ("è·‘", "è®­ç»ƒ", "é¢„æµ‹", "è¯„ä¼°")):
         return _format_today_matches_message()
 
-    if any(k in t for k in ("总结", "概览", "分析", "最新结果", "表现", "指标", "metrics", "logloss", "brier")):
-        if any(k in t for k in ("为什么", "原因", "高", "解释")) and ("brier" in t or "logloss" in t or "概率" in t):
+    if any(k in t for k in ("æ€»ç»“", "æ¦‚è§ˆ", "åˆ†æž", "æœ€æ–°ç»“æžœ", "è¡¨çŽ°", "æŒ‡æ ‡", "metrics", "logloss", "brier")):
+        if any(k in t for k in ("ä¸ºä»€ä¹ˆ", "åŽŸå› ", "é«˜", "è§£é‡Š")) and ("brier" in t or "logloss" in t or "æ¦‚çŽ‡" in t):
             return _format_high_brier_message()
         return _format_latest_analysis_message()
 
-    if any(k in t for k in ("回测", "roi", "收益", "亏", "回撤", "下注", "bets")):
+    if any(k in t for k in ("å›žæµ‹", "roi", "æ”¶ç›Š", "äº", "å›žæ’¤", "ä¸‹æ³¨", "bets")):
         return _format_backtest_message()
 
-    if any(k in t for k in ("跑", "试验", "实验", "对比", "训练", "预测", "upgrade", "晋升", "推单")) and any(
-        k in t for k in ("logit", "lightgbm", "lgbm", "stacking", "v1", "v2", "v3", "sigmoid", "isotonic", "real", "真实", "今天", "今日", "这些")
+    if any(k in t for k in ("è·‘", "è¯•éªŒ", "å®žéªŒ", "å¯¹æ¯”", "è®­ç»ƒ", "é¢„æµ‹", "upgrade", "æ™‹å‡", "æŽ¨å•")) and any(
+        k in t for k in ("logit", "lightgbm", "lgbm", "stacking", "v1", "v2", "v3", "sigmoid", "isotonic", "real", "çœŸå®ž", "ä»Šå¤©", "ä»Šæ—¥", "è¿™äº›")
     ):
         out = run_experiment(text)
         return _json.dumps(out, ensure_ascii=False, indent=2)
 
-    if any(k in t for k in ("状态", "系统状态", "production", "registry", "模型注册", "当前模型")):
+    if any(k in t for k in ("çŠ¶æ€", "ç³»ç»ŸçŠ¶æ€", "production", "registry", "æ¨¡åž‹æ³¨å†Œ", "å½“å‰æ¨¡åž‹")):
         return _format_status_message()
 
     return None
@@ -1075,9 +1561,9 @@ def _p0_predict_fixture(conn, fixture_id: int) -> P0Prediction:
     p_home, p_draw, p_away = predict_1x2(lam_h, lam_a)
     conf = confidence_from_probs(p_home, p_draw, p_away)
     factors: list[str] = []
-    factors.append(f"主队近{home_avg.matches or 0}场：场均进球{home_avg.goals_for:.2f}，场均失球{home_avg.goals_against:.2f}")
-    factors.append(f"客队近{away_avg.matches or 0}场：场均进球{away_avg.goals_for:.2f}，场均失球{away_avg.goals_against:.2f}")
-    factors.append(f"泊松期望进球：主{lam_h:.2f} vs 客{lam_a:.2f}")
+    factors.append(f"ä¸»é˜Ÿè¿‘{home_avg.matches or 0}åœºï¼šåœºå‡è¿›çƒ{home_avg.goals_for:.2f}ï¼Œåœºå‡å¤±çƒ{home_avg.goals_against:.2f}")
+    factors.append(f"å®¢é˜Ÿè¿‘{away_avg.matches or 0}åœºï¼šåœºå‡è¿›çƒ{away_avg.goals_for:.2f}ï¼Œåœºå‡å¤±çƒ{away_avg.goals_against:.2f}")
+    factors.append(f"æ³Šæ¾æœŸæœ›è¿›çƒï¼šä¸»{lam_h:.2f} vs å®¢{lam_a:.2f}")
     return P0Prediction(
         fixture_id=fixture_id,
         p_home=float(p_home),
@@ -1132,8 +1618,8 @@ def p0_chat(req: ChatRequest) -> ChatResponse:
     q = last_user.lower()
     q_date = _extract_date(last_user) or today_utc
 
-    if any(k in q for k in ("赛程", "比赛", "今天", "今日", "fixtures", "matches", "schedule")) and not any(
-        k in q for k in ("预测", "prob", "概率", "胜平负")
+    if any(k in q for k in ("èµ›ç¨‹", "æ¯”èµ›", "ä»Šå¤©", "ä»Šæ—¥", "fixtures", "matches", "schedule")) and not any(
+        k in q for k in ("é¢„æµ‹", "prob", "æ¦‚çŽ‡", "èƒœå¹³è´Ÿ")
     ):
         conn = p0_db_connect()
         try:
@@ -1143,15 +1629,15 @@ def p0_chat(req: ChatRequest) -> ChatResponse:
         if not fs:
             return ChatResponse(
                 content=(
-                    f"# 今日赛程（{q_date}）\n\n"
-                    "数据库里还没有这一天的比赛数据。\n\n"
-                    "你可以先导入：\n\n"
-                    f"- 调用后端：`POST /api/ingest/football-data?date_from={q_date}&date_to={q_date}`\n"
-                    "- 或在前端【赛程】页点击“导入”\n\n"
-                    "导入成功后，再问我“今天有什么比赛？”我会给你表格列表。"
+                    f"# ä»Šæ—¥èµ›ç¨‹ï¼ˆ{q_date}ï¼‰\n\n"
+                    "æ•°æ®åº“é‡Œè¿˜æ²¡æœ‰è¿™ä¸€å¤©çš„æ¯”èµ›æ•°æ®ã€‚\n\n"
+                    "ä½ å¯ä»¥å…ˆå¯¼å…¥ï¼š\n\n"
+                    f"- è°ƒç”¨åŽç«¯ï¼š`POST /api/ingest/football-data?date_from={q_date}&date_to={q_date}`\n"
+                    "- æˆ–åœ¨å‰ç«¯ã€èµ›ç¨‹ã€‘é¡µç‚¹å‡»â€œå¯¼å…¥â€\n\n"
+                    "å¯¼å…¥æˆåŠŸåŽï¼Œå†é—®æˆ‘â€œä»Šå¤©æœ‰ä»€ä¹ˆæ¯”èµ›ï¼Ÿâ€æˆ‘ä¼šç»™ä½ è¡¨æ ¼åˆ—è¡¨ã€‚"
                 )
             )
-        lines = [f"# 今日赛程（{q_date}）", "", "| 开赛(UTC) | 联赛 | 主队 | 客队 | 状态 | 比分 |", "|---|---|---|---|---|---|"]
+        lines = [f"# ä»Šæ—¥èµ›ç¨‹ï¼ˆ{q_date}ï¼‰", "", "| å¼€èµ›(UTC) | è”èµ› | ä¸»é˜Ÿ | å®¢é˜Ÿ | çŠ¶æ€ | æ¯”åˆ† |", "|---|---|---|---|---|---|"]
         for r in fs:
             t = (r.get("utc_date") or "")[11:16] or "-"
             league = r.get("competition_name") or r.get("competition_code") or "-"
@@ -1164,16 +1650,16 @@ def p0_chat(req: ChatRequest) -> ChatResponse:
             lines.append(f"| {t} | {league} | {home} | {away} | {st} | {sc} |")
         return ChatResponse(content="\n".join(lines))
 
-    if any(k in q for k in ("预测", "prob", "概率", "胜平负")):
+    if any(k in q for k in ("é¢„æµ‹", "prob", "æ¦‚çŽ‡", "èƒœå¹³è´Ÿ")):
         try:
             res = p0_predict(P0PredictionsRequest(date=q_date))
         except HTTPException as e:
-            return ChatResponse(content=f"预测失败：{e.detail}")
+            return ChatResponse(content=f"é¢„æµ‹å¤±è´¥ï¼š{e.detail}")
         if not res.predictions:
             return ChatResponse(
                 content=(
-                    f"# 今日预测（{q_date}）\n\n"
-                    "数据库里还没有这一天的比赛数据，先导入后再预测：\n\n"
+                    f"# ä»Šæ—¥é¢„æµ‹ï¼ˆ{q_date}ï¼‰\n\n"
+                    "æ•°æ®åº“é‡Œè¿˜æ²¡æœ‰è¿™ä¸€å¤©çš„æ¯”èµ›æ•°æ®ï¼Œå…ˆå¯¼å…¥åŽå†é¢„æµ‹ï¼š\n\n"
                     f"- `POST /api/ingest/football-data?date_from={q_date}&date_to={q_date}`"
                 )
             )
@@ -1182,11 +1668,11 @@ def p0_chat(req: ChatRequest) -> ChatResponse:
             fixtures = {f["fixture_id"]: f for f in p0_select_fixtures_by_date(conn, q_date, q_date)}
         finally:
             conn.close()
-        lines = [f"# 今日预测（{q_date}）", "", "| 对阵 | 主胜 | 平 | 客胜 | 置信 |", "|---|---:|---:|---:|---:|"]
+        lines = [f"# ä»Šæ—¥é¢„æµ‹ï¼ˆ{q_date}ï¼‰", "", "| å¯¹é˜µ | ä¸»èƒœ | å¹³ | å®¢èƒœ | ç½®ä¿¡ |", "|---|---:|---:|---:|---:|"]
         for p in res.predictions:
             fx = fixtures.get(p.fixture_id) or {}
-            home = fx.get("home_team_name") or "主队"
-            away = fx.get("away_team_name") or "客队"
+            home = fx.get("home_team_name") or "ä¸»é˜Ÿ"
+            away = fx.get("away_team_name") or "å®¢é˜Ÿ"
             lines.append(
                 "| "
                 + f"{home} vs {away}"
@@ -1200,15 +1686,15 @@ def p0_chat(req: ChatRequest) -> ChatResponse:
                 + f"{p.confidence:.2f}"
                 + " |"
             )
-        lines.append("\n## 说明\n- 预测为泊松基线；置信度来自概率分布熵（越尖锐越高）。")
+        lines.append("\n## è¯´æ˜Ž\n- é¢„æµ‹ä¸ºæ³Šæ¾åŸºçº¿ï¼›ç½®ä¿¡åº¦æ¥è‡ªæ¦‚çŽ‡åˆ†å¸ƒç†µï¼ˆè¶Šå°–é”è¶Šé«˜ï¼‰ã€‚")
         return ChatResponse(content="\n".join(lines))
 
     sys_prompt = (
-        f"你是AI球赛预测系统的助手（今天UTC日期：{today_utc}）。"
-        "你必须基于工具返回的数据回答，不要编造比赛、赔率或伤停。"
-        "当用户询问赛程/比赛/预测时，你必须先调用工具（get_fixtures/predict_by_date/predict_by_fixture_ids）。"
-        "如果数据库没有数据，你应该建议用户先调用 ingest_football_data 导入对应日期范围。"
-        "最终输出使用 Markdown：先表格，再给出 3-5 条关键因素。"
+        f"ä½ æ˜¯AIçƒèµ›é¢„æµ‹ç³»ç»Ÿçš„åŠ©æ‰‹ï¼ˆä»Šå¤©UTCæ—¥æœŸï¼š{today_utc}ï¼‰ã€‚"
+        "ä½ å¿…é¡»åŸºäºŽå·¥å…·è¿”å›žçš„æ•°æ®å›žç­”ï¼Œä¸è¦ç¼–é€ æ¯”èµ›ã€èµ”çŽ‡æˆ–ä¼¤åœã€‚"
+        "å½“ç”¨æˆ·è¯¢é—®èµ›ç¨‹/æ¯”èµ›/é¢„æµ‹æ—¶ï¼Œä½ å¿…é¡»å…ˆè°ƒç”¨å·¥å…·ï¼ˆget_fixtures/predict_by_date/predict_by_fixture_idsï¼‰ã€‚"
+        "å¦‚æžœæ•°æ®åº“æ²¡æœ‰æ•°æ®ï¼Œä½ åº”è¯¥å»ºè®®ç”¨æˆ·å…ˆè°ƒç”¨ ingest_football_data å¯¼å…¥å¯¹åº”æ—¥æœŸèŒƒå›´ã€‚"
+        "æœ€ç»ˆè¾“å‡ºä½¿ç”¨ Markdownï¼šå…ˆè¡¨æ ¼ï¼Œå†ç»™å‡º 3-5 æ¡å…³é”®å› ç´ ã€‚"
     )
     msgs = [{"role": "system", "content": sys_prompt}] + [{"role": m.role, "content": m.content} for m in req.messages]
     model = (
@@ -1225,7 +1711,7 @@ def p0_chat(req: ChatRequest) -> ChatResponse:
             "type": "function",
             "function": {
                 "name": "get_fixtures",
-                "description": "从数据库获取指定日期范围的赛程（如今天的比赛）。",
+                "description": "ä»Žæ•°æ®åº“èŽ·å–æŒ‡å®šæ—¥æœŸèŒƒå›´çš„èµ›ç¨‹ï¼ˆå¦‚ä»Šå¤©çš„æ¯”èµ›ï¼‰ã€‚",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -1240,7 +1726,7 @@ def p0_chat(req: ChatRequest) -> ChatResponse:
             "type": "function",
             "function": {
                 "name": "predict_by_date",
-                "description": "对指定日期的所有比赛生成泊松基线预测（胜平负概率）。",
+                "description": "å¯¹æŒ‡å®šæ—¥æœŸçš„æ‰€æœ‰æ¯”èµ›ç”Ÿæˆæ³Šæ¾åŸºçº¿é¢„æµ‹ï¼ˆèƒœå¹³è´Ÿæ¦‚çŽ‡ï¼‰ã€‚",
                 "parameters": {
                     "type": "object",
                     "properties": {"date": {"type": "string"}},
@@ -1252,7 +1738,7 @@ def p0_chat(req: ChatRequest) -> ChatResponse:
             "type": "function",
             "function": {
                 "name": "predict_by_fixture_ids",
-                "description": "对给定 fixture_id 列表生成泊松基线预测。",
+                "description": "å¯¹ç»™å®š fixture_id åˆ—è¡¨ç”Ÿæˆæ³Šæ¾åŸºçº¿é¢„æµ‹ã€‚",
                 "parameters": {
                     "type": "object",
                     "properties": {"fixture_ids": {"type": "array", "items": {"type": "integer"}}},
@@ -1264,7 +1750,7 @@ def p0_chat(req: ChatRequest) -> ChatResponse:
             "type": "function",
             "function": {
                 "name": "ingest_football_data",
-                "description": "从 football-data.org 抓取指定日期范围的五大联赛比赛并入库。",
+                "description": "ä»Ž football-data.org æŠ“å–æŒ‡å®šæ—¥æœŸèŒƒå›´çš„äº”å¤§è”èµ›æ¯”èµ›å¹¶å…¥åº“ã€‚",
                 "parameters": {
                     "type": "object",
                     "properties": {

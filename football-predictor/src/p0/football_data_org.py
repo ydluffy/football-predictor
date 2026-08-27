@@ -74,7 +74,11 @@ class FootballDataOrgClient:
 
 
 def get_client_from_env() -> FootballDataOrgClient:
-    key = os.getenv("FOOTBALL_DATA_API_KEY") or os.getenv("FOOTBALLDATA_API_KEY")
+    key = (
+        os.getenv("FOOTBALL_DATA_TOKEN")
+        or os.getenv("FOOTBALL_DATA_API_KEY")
+        or os.getenv("FOOTBALLDATA_API_KEY")
+    )
     if not key:
         raise RuntimeError("missing FOOTBALL_DATA_API_KEY")
     return FootballDataOrgClient(api_key=key)

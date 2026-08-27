@@ -105,3 +105,13 @@ python scripts/run_train.py --model-type lightgbm --feature-version v3 --calibra
 - `artifacts/eval/high_confidence_errors.csv`：高置信错判样本（开启 verifier 时会附带 risk 字段）
 - `artifacts/eval/underestimated_draws.csv`：低估平局样本（阶段性近似；开启 verifier 时会附带 risk 字段）
 - `artifacts/eval/error_analysis_with_risk.csv`：错误分析扩展表（match_id 关联 verifier_results）
+
+## 多赛季可靠性验证
+
+```bash
+python scripts/build_historical_dataset.py --download true
+python scripts/run_season_holdout.py --feature-version v1 --model-type logit --output-path artifacts/eval/season_holdout_logit_v1.csv
+python scripts/run_season_holdout.py --feature-version v4 --model-type logit --output-path artifacts/eval/season_holdout_logit_v4.csv
+```
+
+赛季留出只使用早于目标赛季的数据训练，并同时报告去水后的市场隐含概率基准。

@@ -20,7 +20,7 @@ def import_csv_dataset(input_path: str) -> pd.DataFrame:
     if p.is_dir():
         raise IsADirectoryError(f"输入路径是目录: {input_path}")
     try:
-        df = pd.read_csv(p, encoding="utf-8")
+        df = pd.read_csv(p, encoding="utf-8", low_memory=False)
     except UnicodeDecodeError as e:
         raise UnicodeDecodeError(e.encoding, e.object, e.start, e.end, "CSV 编码错误：请使用 UTF-8 或先转码") from e
     except pd.errors.EmptyDataError as e:
@@ -39,4 +39,3 @@ def summarize_dataset(df: pd.DataFrame) -> CsvDatasetSummary:
         column_count=int(df.shape[1]),
         columns=[str(c) for c in df.columns],
     )
-

@@ -29,6 +29,8 @@ def test_validate_matches_dataset_writes_outputs(monkeypatch, tmp_path):
     assert settings.eval_dataset_missing_report_path.exists()
     assert payload["row_count"] == 50
     assert payload["required_fields_missing"] == []
+    assert payload["required_field_null_counts"] == {}
+    assert payload["is_trainable"] is True
     assert 0.0 <= payload["parseable_date_ratio"] <= 1.0
 
     loaded = json.loads(settings.eval_dataset_validation_path.read_text(encoding="utf-8"))
@@ -43,6 +45,31 @@ def test_validate_matches_dataset_missing_required_fields_reported(monkeypatch, 
     df = pd.DataFrame({"match_id": ["m1"], "odds_home": [2.0], "odds_draw": [3.0], "actual_result": ["H"]})
     payload = validate_matches_dataset(df, "v1")
     assert "odds_away" in payload["required_fields_missing"]
+    assert payload["is_trainable"] is False
+
+
+def test_validate_matches_dataset_required_nulls_are_not_trainable(monkeypatch, tmp_path):
+    root = tmp_path / "football-predictor"
+    monkeypatch.setenv("FOOTBALL_PREDICTOR_ROOT", str(root))
+    get_settings.cache_clear()
+
+    df = pd.DataFrame(
+        {
+            "match_id": ["m1", "m2"],
+            "odds_home": [2.0, None],
+            "odds_draw": [3.0, None],
+            "odds_away": [4.0, None],
+            "actual_result": ["H", "D"],
+        }
+    )
+    payload = validate_matches_dataset(df, "v1")
+
+    assert payload["required_field_null_counts"] == {
+        "odds_home": 1,
+        "odds_draw": 1,
+        "odds_away": 1,
+    }
+    assert payload["is_trainable"] is False
 
 
 def test_validate_matches_dataset_invalid_feature_version_raises():

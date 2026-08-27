@@ -191,3 +191,116 @@ def test_build_inference_features_does_not_require_actual_result():
     assert len(X) == len(df)
     assert "norm_home" in X.columns
     assert feature_names == list(X.columns)
+
+
+def test_build_basic_features_v4_adds_leakage_safe_team_history():
+    df = pd.DataFrame(
+        {
+            "match_id": ["m1", "m2", "m3"],
+            "date": ["2025-01-01", "2025-01-02", "2025-01-03"],
+            "home_team": ["A", "B", "A"],
+            "away_team": ["B", "A", "C"],
+            "home_goals": [2, 0, 1],
+            "away_goals": [0, 1, 1],
+            "odds_home": [2.0, 2.8, 1.9],
+            "odds_draw": [3.2, 3.1, 3.3],
+            "odds_away": [4.0, 2.5, 4.2],
+            "actual_result": ["H", "A", "D"],
+        }
+    )
+
+    X3, _, _ = build_basic_features(df, feature_version="v3")
+    X4, _, _ = build_basic_features(df, feature_version="v4")
+
+    assert X4.shape[1] == 10
+    assert {"goals_for_diff_5", "goals_against_diff_5"} <= set(X4.columns)
+    assert X4.loc[0, "goals_for_diff_5"] == 0.0
+    assert X4.loc[1, "goals_for_diff_5"] < 0.0
+
+
+def test_build_basic_features_v5_adds_rolling_match_stats():
+    df = pd.DataFrame(
+        {
+            "match_id": ["m1", "m2"],
+            "date": ["2025-01-01", "2025-01-02"],
+            "home_team": ["A", "B"],
+            "away_team": ["B", "A"],
+            "home_goals": [2, 0],
+            "away_goals": [0, 1],
+            "home_shots": [12, 8],
+            "away_shots": [5, 10],
+            "home_shots_on_target": [5, 2],
+            "away_shots_on_target": [2, 4],
+            "home_corners": [6, 3],
+            "away_corners": [2, 5],
+            "home_yellow_cards": [1, 2],
+            "away_yellow_cards": [2, 1],
+            "home_red_cards": [0, 0],
+            "away_red_cards": [0, 0],
+            "odds_home": [2.0, 2.8],
+            "odds_draw": [3.2, 3.1],
+            "odds_away": [4.0, 2.5],
+            "actual_result": ["H", "A"],
+        }
+    )
+
+    X, _, _ = build_basic_features(df, feature_version="v5")
+
+    assert {"shots_on_target_diff_5", "corners_diff_5", "cards_diff_5"} <= set(X.columns)
+    assert X.loc[0, "home_match_stats_seen_5"] == 0.0
+    assert X.loc[1, "away_match_stats_seen_5"] == 1.0
+
+
+def test_build_basic_features_v6_adds_schedule_features():
+    df = pd.DataFrame(
+        {
+            "match_id": ["m1", "m2"],
+            "date": ["2025-01-01", "2025-01-04"],
+            "home_team": ["A", "C"],
+            "away_team": ["B", "A"],
+            "home_goals": [1, 0],
+            "away_goals": [0, 1],
+            "odds_home": [2.0, 2.8],
+            "odds_draw": [3.2, 3.1],
+            "odds_away": [4.0, 2.5],
+            "actual_result": ["H", "A"],
+        }
+    )
+
+    X, _, _ = build_basic_features(df, feature_version="v6")
+
+    assert {"rest_days_diff", "matches_7d_diff", "short_rest_diff"} <= set(X.columns)
+    assert X.loc[1, "away_rest_days"] == 3.0
+    assert X.loc[1, "away_short_rest_flag"] == 1.0
+
+
+def test_build_basic_features_v8_combines_match_stats_schedule_and_season_context():
+    df = pd.DataFrame(
+        {
+            "match_id": ["m1", "m2"],
+            "league": ["E0", "E0"],
+            "season": ["2024-25", "2024-25"],
+            "date": ["2024-08-10", "2024-08-14"],
+            "home_team": ["A", "C"],
+            "away_team": ["B", "A"],
+            "home_goals": [1, 0],
+            "away_goals": [0, 1],
+            "home_shots": [10, 8],
+            "away_shots": [6, 12],
+            "home_shots_on_target": [4, 2],
+            "away_shots_on_target": [2, 5],
+            "home_corners": [5, 3],
+            "away_corners": [2, 6],
+            "home_yellow_cards": [1, 2],
+            "away_yellow_cards": [2, 1],
+            "home_red_cards": [0, 0],
+            "away_red_cards": [0, 0],
+            "odds_home": [2.0, 2.8],
+            "odds_draw": [3.2, 3.1],
+            "odds_away": [4.0, 2.5],
+            "actual_result": ["H", "A"],
+        }
+    )
+    X, _, _ = build_basic_features(df, feature_version="v8")
+    assert {"shots_on_target_diff_5", "rest_days_diff", "season_progress"} <= set(X.columns)
+    assert X.loc[0, "home_match_stats_seen_5"] == 0.0

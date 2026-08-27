@@ -5,6 +5,7 @@ import pandas as pd
 from sklearn.model_selection import TimeSeriesSplit
 
 from config.settings import get_settings
+from data.transform_rules import parse_match_dates
 from evaluate.cv_league_summary import summarize_cv_by_league
 from evaluate.metrics import compute_metrics
 from features.basic_features import build_basic_features
@@ -25,7 +26,7 @@ def run_time_series_cv(
         raise ValueError(f"缺少 date 字段: {date_col}")
 
     data = df.copy()
-    data[date_col] = pd.to_datetime(data[date_col], errors="coerce")
+    data[date_col] = parse_match_dates(data[date_col])
     if data[date_col].isna().any():
         raise ValueError("date 存在无法解析的值")
 
@@ -43,11 +44,19 @@ def run_time_series_cv(
     if n_splits < 1 or n_splits >= n_samples:
         raise ValueError("样本不足：n_splits 必须小于样本数且至少为 1")
 
+    unique_dates = pd.Index(data[date_col].drop_duplicates())
+    if n_splits >= len(unique_dates):
+        raise ValueError("比赛日不足：n_splits 必须小于唯一比赛日数量")
+
     splitter = TimeSeriesSplit(n_splits=n_splits)
     rows: list[dict[str, object]] = []
     fold_pred_rows: list[pd.DataFrame] = []
 
-    for fold, (train_idx, test_idx) in enumerate(splitter.split(X_all)):
+    for fold, (train_date_idx, test_date_idx) in enumerate(splitter.split(unique_dates)):
+        train_dates = unique_dates[train_date_idx]
+        test_dates = unique_dates[test_date_idx]
+        train_idx = np.flatnonzero(data[date_col].isin(train_dates).to_numpy())
+        test_idx = np.flatnonzero(data[date_col].isin(test_dates).to_numpy())
         train_size = int(len(train_idx))
         test_size = int(len(test_idx))
         X_train = X_all.iloc[train_idx]
@@ -72,6 +81,9 @@ def run_time_series_cv(
             proba = predict_calibrated_proba(calibrator, X_test)
 
         m = compute_metrics(y_test, proba[["p_home", "p_draw", "p_away"]])
+        market_proba = X_test[["norm_home", "norm_draw", "norm_away"]].copy()
+        market_proba.columns = ["p_home", "p_draw", "p_away"]
+        market_metrics = compute_metrics(y_test, market_proba)
 
         train_end_date = data.loc[train_idx, date_col].max()
         test_start_date = data.loc[test_idx, date_col].min()
@@ -112,6 +124,10 @@ def run_time_series_cv(
                 "calibration_method": calibration_method,
                 "brier": float(m["brier"]),
                 "logloss": float(m["logloss"]),
+                "market_brier": float(market_metrics["brier"]),
+                "market_logloss": float(market_metrics["logloss"]),
+                "brier_vs_market": float(m["brier"] - market_metrics["brier"]),
+                "logloss_vs_market": float(m["logloss"] - market_metrics["logloss"]),
                 "train_end_date": str(pd.Timestamp(train_end_date).date()),
                 "test_start_date": str(pd.Timestamp(test_start_date).date()),
             }

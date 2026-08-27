@@ -99,3 +99,37 @@ def test_run_train_missing_data_path_raises(monkeypatch, tmp_path):
     with pytest.raises(FileNotFoundError):
         monkeypatch.setattr("sys.argv", ["run_train.py", "--model-type", "logit", "--cv", "false", "--data-path", str(root / "missing.csv")])
         main()
+
+
+def test_run_train_cv_uses_specified_data_path(monkeypatch, tmp_path):
+    main = _load_run_train_main()
+    root = tmp_path / "football-predictor"
+    custom = root / "data" / "custom"
+    custom.mkdir(parents=True, exist_ok=True)
+
+    df = pd.DataFrame(
+        {
+            "match_id": [f"m{i}" for i in range(36)],
+            "date": pd.date_range("2025-01-01", periods=12, freq="D").repeat(3).astype(str),
+            "league": ["EPL"] * 36,
+            "odds_home": [1.8, 2.1, 2.8] * 12,
+            "odds_draw": [3.2, 3.3, 3.1] * 12,
+            "odds_away": [4.2, 3.5, 2.4] * 12,
+            "actual_result": ["H", "D", "A"] * 12,
+        }
+    )
+    path = custom / "cv.csv"
+    df.to_csv(path, index=False)
+
+    monkeypatch.setenv("FOOTBALL_PREDICTOR_ROOT", str(root))
+    get_settings.cache_clear()
+    settings = get_settings()
+    monkeypatch.setattr(
+        "sys.argv",
+        ["run_train.py", "--model-type", "logit", "--cv", "true", "--data-path", str(path)],
+    )
+
+    main()
+
+    out = pd.read_csv(settings.eval_cv_results_path)
+    assert out["test_size"].tolist() == [9, 9, 9]

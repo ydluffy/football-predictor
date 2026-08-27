@@ -1,5 +1,65 @@
 # Feature Spec (Phase 7)
 
+## v5 Experimental Match Statistics
+
+`v5` extends `v4` with five-match rolling pre-match statistics:
+
+- shots and shots on target
+- corners
+- yellow cards plus two times red cards
+- net shots, net shots on target, and net corners (for minus against)
+
+The feature builder batches state updates by match date. A match can only use
+statistics from earlier dates, so fixtures on the same date cannot leak into
+one another.
+
+Source: https://www.football-data.co.uk/data.php
+
+Validation status on 2026-06-14: experimental and not approved for promotion.
+Across the 2022-23 through 2025-26 season holdouts, all attacking-volume feature
+sets worsened weighted log loss. The only apparent gain, cards on E0-E3, was
+not statistically significant under paired bootstrap.
+
+## v6 Experimental Schedule Load
+
+`v6` extends `v4` with league-only pre-match schedule features:
+
+- capped rest days and home-away rest difference
+- match counts in the previous 7 and 14 days
+- short-rest flags using a three-day threshold
+- schedule-history availability flags
+
+State updates are batched by match date, so same-day fixtures cannot leak into
+one another. The current historical source does not include domestic cups or
+European competitions, so these features measure league schedule load only.
+
+Validation status on 2026-06-14: experimental and rejected. Full `v6` weighted
+season-holdout log loss was `1.021090`, versus `1.020171` for `v1` and
+`1.019365` for the market baseline. The three-day short-rest feature showed a
+small isolated gain, but its paired-bootstrap confidence interval crossed zero,
+the 2025-26 holdout worsened, and thresholds of two, four, and five days did not
+replicate the gain.
+
+## External Competition Calendar Experiment
+
+An optional external calendar adapter parses OpenFootball Football.TXT files
+for the FA Cup, UEFA Champions League, UEFA Europa League, and UEFA Conference
+League. Team names are mapped through explicit aliases; fuzzy matching is not
+used.
+
+Sources:
+
+- https://github.com/openfootball/england
+- https://github.com/openfootball/champions-league
+
+The available files cover 2020-21 through 2024-25 and add 975 matches involving
+teams in the training dataset. On the three fully covered holdout seasons,
+external-calendar short rest improved over the odds-only baseline, but was
+worse than the same feature computed from league fixtures alone. Because the
+2025-26 external calendar is unavailable and the added events did not improve
+the existing schedule feature, the adapter remains experimental and is not
+used for production promotion.
+
 ## 范围
 
 本文件描述 Phase 7 新增特征（赔率时序、Kelly proxy、ExpDecay 动量）在统一入口中的落地方式：`feature_version=v1/v2/v3` 的差异、各新增公式、字段来源（真实字段 vs proxy）、以及缺字段时的安全降级规则。
@@ -15,6 +75,7 @@
 - `v1`：基础赔率特征（仅依赖 `odds_home/odds_draw/odds_away`）
 - `v2`：`v1` + `xg_home/xg_away` + `injury_flag` + `line_move`
 - `v3`：`v2` + odds sequence（赔率时序特征）+ kelly proxy（市场概率变化代理）+ momentum（ExpDecay 攻防动量代理）
+- `v4`：`v1` + 无泄漏球队历史特征。完整状态包含 Elo、近期积分、进失球和主客场表现；当前模型仅选用消融验证较稳的 `goals_for_diff_5` 与 `goals_against_diff_5`
 
 ## 输入字段约定（宽表模拟）
 
@@ -152,3 +213,14 @@
   - recent_move：缺少 t1/t2 或 NaN → 对应行降级为 0
   - kelly proxy：open/last 任一 outcome 缺失/非正/NaN → 对应行降级为 0
   - momentum：缺少 last_1..3 或 NaN → 对应行按可用值计算；若该行无有效值则为 0
+
+## v8：市场残差研究上下文组合
+
+`v8` 组合以下严格使用比赛发生前历史信息的特征：
+
+- `v4` 的近 5 场进球与失球差；
+- `v5` 的近 5 场射门、射正、角球和牌数滚动差；
+- `v6` 的休息天数、7/14 天赛程密度和短休标记；
+- `v7` 的赛季进度、早中末期和已赛轮次特征。
+
+当前用途仅限市场残差研究。训练目标是实际结果相对于市场隐含概率的残差；赔率字段只提供基线概率，不进入上下文修正器。所有滚动比赛统计在当前比赛前执行 `shift`，禁止使用当前场或未来场次数据。

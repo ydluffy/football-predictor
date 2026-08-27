@@ -20,7 +20,7 @@ from models.artifact_manifest import build_manifest, default_manifest_path_for_a
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-type", choices=["logit", "lightgbm", "stacking", "stacking_oof"], default="logit")
-    parser.add_argument("--feature-version", choices=["v1", "v2", "v3"], default="v2")
+    parser.add_argument("--feature-version", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"], default="v2")
     parser.add_argument("--calibration", choices=["none", "sigmoid", "isotonic"], default="none")
     parser.add_argument("--cv", choices=["false", "true"], default="false")
     parser.add_argument("--use-verifier", choices=["false", "true"], default="false")
@@ -109,16 +109,36 @@ def main() -> None:
         print("cv=true 当前不启用 verifier；仅在 cv=false 的单次评估模式下支持 --use-verifier true")
 
     try:
-        data_path = "data/raw/sample_matches.csv"
+        data_path = args.data_path if args.data_path else "data/raw/sample_matches.csv"
         df = load_matches_with_meta(
             data_path,
-            extra_columns=["date", "league", "xg_home", "xg_away", "injury_flag", "line_move"],
+            extra_columns=[
+                "date",
+                "league",
+                "xg_home",
+                "xg_away",
+                "injury_flag",
+                "line_move",
+                "home_goals",
+                "away_goals",
+            ],
         )
     except FileNotFoundError:
+        if args.data_path:
+            raise
         fallback = settings.project_root.parent / "data" / "sample_matches.csv"
         df = load_matches_with_meta(
             str(fallback),
-            extra_columns=["date", "league", "xg_home", "xg_away", "injury_flag", "line_move"],
+            extra_columns=[
+                "date",
+                "league",
+                "xg_home",
+                "xg_away",
+                "injury_flag",
+                "line_move",
+                "home_goals",
+                "away_goals",
+            ],
         )
 
     out = run_time_series_cv(df, feature_version=args.feature_version, n_splits=3, model_type=args.model_type, calibration_method=args.calibration)

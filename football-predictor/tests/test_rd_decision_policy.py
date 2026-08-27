@@ -25,3 +25,45 @@ def test_decision_policy_review_when_reliability_worsened():
     )
     assert d.decision == "review_required"
     assert "no_metric_improvement" in d.gate_reasons
+
+
+def test_decision_policy_requires_cross_season_evidence_when_enabled():
+    d = decide_candidate_upgrade(
+        current_metrics={"brier": 0.2},
+        candidate_metrics={"brier": 0.19},
+        pytest_passed=True,
+        data_quality_ok=True,
+        high_confidence_errors_delta=0,
+        require_cross_season_evidence=True,
+    )
+    assert d.decision == "keep_current"
+    assert d.gate_reasons == ["missing_cross_season_evidence"]
+
+
+def test_decision_policy_blocks_non_significant_cross_season_gain():
+    d = decide_candidate_upgrade(
+        current_metrics={"brier": 0.2},
+        candidate_metrics={"brier": 0.19},
+        pytest_passed=True,
+        data_quality_ok=True,
+        high_confidence_errors_delta=0,
+        cross_season_logloss_difference=-0.00004,
+        bootstrap_ci95_high=0.00014,
+        require_cross_season_evidence=True,
+    )
+    assert d.decision == "keep_current"
+    assert d.gate_reasons == ["bootstrap_not_significant"]
+
+
+def test_decision_policy_promotes_significant_cross_season_gain():
+    d = decide_candidate_upgrade(
+        current_metrics={"brier": 0.2},
+        candidate_metrics={"brier": 0.19},
+        pytest_passed=True,
+        data_quality_ok=True,
+        high_confidence_errors_delta=0,
+        cross_season_logloss_difference=-0.002,
+        bootstrap_ci95_high=-0.0005,
+        require_cross_season_evidence=True,
+    )
+    assert d.decision == "promote_candidate"

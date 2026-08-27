@@ -144,6 +144,15 @@ def run_candidate_model_upgrade_workflow(
             pytest_passed=pytest_passed,
             data_quality_ok=data_quality_ok,
             high_confidence_errors_delta=high_conf_delta,
+            cross_season_logloss_difference=ctx.get(
+                "cross_season_logloss_difference",
+                candidate_metrics.get("cross_season_logloss_difference"),
+            ),
+            bootstrap_ci95_high=ctx.get(
+                "bootstrap_ci95_high",
+                candidate_metrics.get("bootstrap_ci95_high"),
+            ),
+            require_cross_season_evidence=bool(ctx.get("require_cross_season_evidence", False)),
         )
         decision = {"decision": d.decision, "gate_reasons": list(d.gate_reasons), "details": d.details}
 

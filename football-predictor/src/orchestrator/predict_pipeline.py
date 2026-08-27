@@ -111,8 +111,22 @@ def run_pipeline(
         raise FileNotFoundError(str(p))
     df_full = load_matches_with_meta(
         str(p),
-        extra_columns=["date", "league", "xg_home", "xg_away", "injury_flag", "line_move"],
+        extra_columns=[
+            "date",
+            "league",
+            "xg_home",
+            "xg_away",
+            "injury_flag",
+            "line_move",
+            "home_goals",
+            "away_goals",
+        ],
     )
+    if feature_version == "v4":
+        from features.team_history_features import build_team_history_features
+
+        history_features = build_team_history_features(df_full)
+        df_full = pd.concat([df_full, history_features], axis=1)
 
     steps: list[dict[str, object]] = []
     raw_rows = int(len(df_full))
