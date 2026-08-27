@@ -69,6 +69,12 @@ route modules receive its functions explicitly, while `main.py` may re-export
 them temporarily for compatibility. Service tests use isolated artifact roots
 and must not depend on mutable repository outputs.
 
+Provider selection and OpenAI-compatible HTTP transport belong in
+`src/api/services/chat_client.py`. Chat schemas, tool orchestration, local P0
+intent handling, and chat endpoints belong in `src/api/routes/chat.py`. Tests
+must exercise the no-credential mock path and must never require a live model
+provider or external network access.
+
 Pytest treats deprecations, future warnings, and ambiguous date parsing warnings
 as errors. Resolve a warning at its source instead of suppressing it in a test.
 

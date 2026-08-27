@@ -55,6 +55,8 @@ World Cup sporttery market schemas, CSV persistence, paste parsing, and routes
 are owned by `football-predictor/src/api/routes/sporttery.py`.
 Research artifact analysis, experiment command parsing, status summaries, and
 natural-language dispatch live in `football-predictor/src/api/services/`.
+The OpenAI-compatible transport is isolated in `api/services/chat_client.py`;
+all chat schemas and HTTP orchestration live in `api/routes/chat.py`.
 
 ## Local verification
 

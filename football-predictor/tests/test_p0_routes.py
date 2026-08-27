@@ -6,6 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from api import main as api_main
+from api.routes import chat as chat_routes
 from api.routes import p0 as p0_routes
 from p0.db import connect, upsert_fixtures
 
@@ -114,9 +115,9 @@ def test_ingest_route_persists_fetched_fixtures(monkeypatch, tmp_path) -> None:
 
 def test_main_preserves_p0_exports_and_chinese_chat_intent(monkeypatch) -> None:
     connection = SimpleNamespace(close=lambda: None)
-    monkeypatch.setattr(api_main, "p0_db_connect", lambda: connection)
+    monkeypatch.setattr(chat_routes, "p0_db_connect", lambda: connection)
     monkeypatch.setattr(
-        api_main,
+        chat_routes,
         "p0_select_fixtures_by_date",
         lambda conn, date_from, date_to: [],
     )
