@@ -47,7 +47,8 @@ GitHub Actions runs two independent jobs on pushes and pull requests:
 
 FastAPI application assembly remains in `football-predictor/src/api/main.py`.
 Independent endpoint groups belong under `football-predictor/src/api/routes/`
-and receive their service dependencies explicitly through router factories.
+Router factories receive cross-cutting service dependencies explicitly; domain
+routers may depend directly on the domain package they exclusively expose.
 
 ## Local verification
 

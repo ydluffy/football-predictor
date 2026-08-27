@@ -56,8 +56,13 @@ and run the relevant automated tests.
 Use FastAPI's lifespan context for startup and shutdown work; deprecated event
 decorators are rejected by the test warning policy. Keep application assembly
 in `src/api/main.py`, and place cohesive endpoint groups in `src/api/routes`.
-Router modules receive service callables explicitly so they can be tested
-without starting databases, loading models, or calling external services.
+Cross-cutting router modules receive service callables explicitly. A domain
+router may depend directly on the domain package it exclusively exposes, as the
+P0 fixture and prediction routes do, but must have isolated integration tests.
 
 Pytest treats deprecations, future warnings, and ambiguous date parsing warnings
 as errors. Resolve a warning at its source instead of suppressing it in a test.
+
+Source files use UTF-8 and repository-defined line endings from `.editorconfig`
+and `.gitattributes`. User-visible non-ASCII text requires a regression test
+when encoding damage would alter API behavior, intent matching, or HTML output.

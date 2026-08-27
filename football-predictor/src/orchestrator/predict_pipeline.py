@@ -63,7 +63,7 @@ def train_and_save(*, data_path: Path | None = None) -> dict[str, object]:
     X, y = build_training_frame(df)
     result = train_baseline_logit(X, y)
 
-    stamp = datetime.utcnow().strftime("%Y%m%d_%H%M%S")
+    stamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
     model_path = settings.artifacts_models_dir / f"baseline_logit_{stamp}.pkl"
     save_model(result.model, model_path)
 
