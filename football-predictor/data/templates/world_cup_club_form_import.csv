@@ -1,0 +1,2 @@
+source,source_player_id,player_id,match_date,club,competition,minutes,started,goals,assists,xg,xa
+espn_public,45843,,2026-05-20,Inter Miami,MLS,90,True,1,1,0.8,0.4

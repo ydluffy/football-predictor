@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "openfootball_japan_j1": {
+      "competition_id": "J1",
+      "provider": "OpenFootball",
+      "license": "CC0-1.0",
+      "license_url": "https://github.com/openfootball/world/blob/master/LICENSE.md",
+      "repository_url": "https://github.com/openfootball/world/tree/master/asia/japan",
+      "raw_url_template": "https://cdn.jsdelivr.net/gh/openfootball/world@master/asia/japan/{year}_jp1.txt",
+      "available_years": [2019, 2020, 2021, 2022, 2023, 2024, 2025],
+      "storage_allowed": true,
+      "automatic_download_allowed": true,
+      "content_scope": ["schedule", "results", "halftime_score"],
+      "odds_available": false,
+      "model_training_eligible": false,
+      "usage_note": "仅用于赛程、赛果、赛季阶段和赛程负荷特征；未含赛前赔率，不得并入赔率模型训练集。"
+    },
+    "kleague_official_portal": {
+      "competition_id": "K1",
+      "provider": "K League Data Portal",
+      "terms_url": "https://portal.kleague.com/mainFrame.do?selectedMenuCd=0402",
+      "license": "permission_required",
+      "storage_allowed": false,
+      "automatic_download_allowed": false,
+      "content_scope": [],
+      "odds_available": false,
+      "model_training_eligible": false,
+      "usage_note": "官方页面限制未经许可的复制、存储和分发；取得书面授权前禁止自动抓取或落库。"
+    }
+  }
+}

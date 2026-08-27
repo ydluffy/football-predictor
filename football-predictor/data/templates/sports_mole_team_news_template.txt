@@ -1,0 +1,3 @@
+# Copy or summarize Sports Mole team news into team-prefixed lines.
+Germany: Example Player (hamstring injury); Example Doubt (late fitness test)
+Argentina: Example Suspended Player (suspended after red card)

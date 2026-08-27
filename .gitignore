@@ -1,19 +1,35 @@
 .env
 .env.*
+!.env.example
 
 .pytest_cache/
 **/__pycache__/
 *.pyc
+.coverage
+coverage.xml
+htmlcov/
+.mypy_cache/
+.ruff_cache/
+*.log
 
 football-predictor/.venv/
 football-predictor/.trae/
 football-predictor/artifacts/
+football-predictor/_tmp/
 football-predictor/data/p0.sqlite3
 football-predictor/data/raw/
 football-predictor/data/processed/
 football-predictor/data/external/
 football-predictor/data/interim/
-football-predictor/artifacts/
+
+# Mutable operational evidence stays local. Track only the repository policy
+# files that describe how these datasets and generated reports are managed.
+football-predictor/data/manual/*
+!football-predictor/data/manual/README.md
+football-predictor/data/player_level/*
+!football-predictor/data/player_level/README.md
+football-predictor/outputs/*
+!football-predictor/outputs/README.md
 
 **/*.egg-info/
 *.code-workspace
@@ -26,3 +42,7 @@ web/.vercel/
 node_modules/
 .next/
 .vercel/
+
+# Local IDE/agent state and personal evidence are not project source.
+/.trae/
+/投注方案/

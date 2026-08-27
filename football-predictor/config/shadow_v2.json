@@ -1,0 +1,53 @@
+{
+  "schema_version": 1,
+  "mode": "shadow_only",
+  "model": {
+    "candidate_id": "sporttery_handicap_temporal_blend_v2_shadow",
+    "model_c": 0.5,
+    "baseline_smoothing": 20.0,
+    "alpha_grid": [0.0, 0.1, 0.25, 0.5, 0.75],
+    "max_alpha_by_handicap": {
+      "-2": 0.5,
+      "-1": 0.5,
+      "1": 0.25,
+      "2": 0.25
+    },
+    "min_validation_improvement": 0.0005,
+    "n_bootstrap": 2000
+  },
+  "portfolio": {
+    "budget": 100.0,
+    "unit": 2.0,
+    "min_edge": 0.025,
+    "probability_haircut": 0.02,
+    "max_decimal_odds": 4.0,
+    "max_legs": 2,
+    "max_total_stake_fraction": 0.5,
+    "max_candidate_stake_fraction": 0.15,
+    "max_match_exposure_fraction": 0.2,
+    "max_competition_exposure_fraction": 0.3,
+    "fractional_kelly": 0.15
+  },
+  "promotion_gates": {
+    "historical_sporttery_odds_time_aligned": true,
+    "independent_settled_shadow_plans": 300,
+    "recent_holdout_seasons_without_degradation": 2,
+    "bootstrap_probability_model_better": 0.95,
+    "calibration_not_worse": true,
+    "risk_adjusted_return_not_worse": true,
+    "max_drawdown_not_worse": true
+  },
+  "promotion_gate_semantics": "promotion_gates lists required conditions, not current completion status",
+  "current_promotion_status": {
+    "as_of": "2026-08-17",
+    "historical_sporttery_odds_time_aligned": false,
+    "identity_paired_events": 12,
+    "time_aligned_events_within_30_minutes": 12,
+    "minimum_time_aligned_events": 300,
+    "independent_settled_shadow_plans": 0,
+    "required_independent_settled_shadow_plans": 300,
+    "evidence": "artifacts/data/inner_outer_market_alignment_latest.json",
+    "production_promotion_allowed": false
+  },
+  "production_change_allowed": false
+}

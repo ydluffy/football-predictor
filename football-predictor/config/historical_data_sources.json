@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "football_data_csv": {
+    "base_url": "https://www.football-data.co.uk/mmz4281/{season_code}/{division}.csv",
+    "profiles": {
+      "england_core": ["E0", "E1", "E2", "E3", "EC"],
+      "europe_top5": ["E0", "SP1", "D1", "F1", "I1"],
+      "europe_extended": ["E0", "SP1", "D1", "F1", "I1", "N1", "P1"]
+    },
+    "divisions": {
+      "E0": "ENG_PREMIER_LEAGUE",
+      "E1": "ENG_CHAMPIONSHIP",
+      "E2": "ENG_LEAGUE_ONE",
+      "E3": "ENG_LEAGUE_TWO",
+      "EC": "ENG_NATIONAL_LEAGUE",
+      "SP1": "ESP_LA_LIGA",
+      "D1": "GER_BUNDESLIGA",
+      "F1": "FRA_LIGUE_1",
+      "I1": "ITA_SERIE_A",
+      "N1": "NED_EREDIVISIE",
+      "P1": "POR_PRIMEIRA_LIGA"
+    }
+  }
+}

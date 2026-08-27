@@ -1,0 +1,2 @@
+source,source_player_id,source_url,player_id,canonical_name,national_team,primary_position,club,market_value_eur,height_cm,preferred_foot,availability_status,availability_reason,profile_updated_at,confidence
+transfermarkt,example-1,https://www.transfermarkt.com/example/profil/spieler/1,player_1,Example Player,Argentina,Forward,Example Club,75000000,178,right,available,,2026-06-27,0.85

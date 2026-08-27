@@ -1,0 +1,2 @@
+match_date,player_id,club,competition,minutes,started,goals,assists,xg,xa
+2026-05-20,example_player_001,Example Club,Example League,90,True,1,0,0.72,0.10

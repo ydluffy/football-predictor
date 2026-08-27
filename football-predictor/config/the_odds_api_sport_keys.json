@@ -1,0 +1,32 @@
+{
+  "schema_version": 1,
+  "competition_sport_keys": {
+    "ENG_PREMIER_LEAGUE": "soccer_epl",
+    "ENG_CHAMPIONSHIP": "soccer_efl_champ",
+    "ENG_LEAGUE_ONE": "soccer_england_league1",
+    "ENG_LEAGUE_TWO": "soccer_england_league2",
+    "ESP_LA_LIGA": "soccer_spain_la_liga",
+    "GER_BUNDESLIGA": "soccer_germany_bundesliga",
+    "FRA_LIGUE_1": "soccer_france_ligue_one",
+    "ITA_SERIE_A": "soccer_italy_serie_a",
+    "NED_EREDIVISIE": "soccer_netherlands_eredivisie",
+    "POR_PRIMEIRA_LIGA": "soccer_portugal_primeira_liga",
+    "JPN_J1_LEAGUE": "soccer_japan_j_league",
+    "KOR_K_LEAGUE_1": "soccer_korea_kleague1",
+    "FIN_VEIKKAUSLIIGA": "soccer_finland_veikkausliiga",
+    "SWE_ALLSVENSKAN": "soccer_sweden_allsvenskan",
+    "BRA_SERIE_A": "soccer_brazil_campeonato",
+    "UEFA_CHAMPIONS_LEAGUE": "soccer_uefa_champs_league",
+    "UEFA_EUROPA_LEAGUE": "soccer_uefa_europa_league",
+    "UEFA_CONFERENCE_LEAGUE": "soccer_uefa_europa_conference_league",
+    "ENG_FA_CUP": "soccer_fa_cup",
+    "ESP_COPA_DEL_REY": "soccer_spain_copa_del_rey",
+    "GER_DFB_POKAL": "soccer_germany_dfb_pokal",
+    "ITA_COPPA_ITALIA": "soccer_italy_coppa_italia",
+    "FIFA_WORLD_CUP": "soccer_fifa_world_cup",
+    "UEFA_EURO": "soccer_uefa_european_championship",
+    "UEFA_NATIONS_LEAGUE": "soccer_uefa_nations_league",
+    "CONMEBOL_COPA_AMERICA": "soccer_conmebol_copa_america",
+    "INTERNATIONAL_FRIENDLY": "soccer_international_friendlies"
+  }
+}

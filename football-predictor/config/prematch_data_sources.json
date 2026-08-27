@@ -1,0 +1,79 @@
+{
+  "schema_version": 1,
+  "sources": {
+    "sporttery_official": {
+      "license_status": "allowed",
+      "automatic_ingest": true,
+      "allowed_signal_types": ["odds_snapshot"],
+      "documentation_url": "https://www.lottery.gov.cn/jc/jsq/zqspf/",
+      "usage_note": "每次扫描保存不可变原始快照、抓取时间、哈希和安全场次号；开赛后场次不得进入历史赔率研究。"
+    },
+    "manual_verified": {
+      "license_status": "manual_verified",
+      "automatic_ingest": false,
+      "allowed_signal_types": [
+        "absence",
+        "confirmed_starter",
+        "team_strength",
+        "prematch_xg",
+        "travel_km",
+        "timezone_shift_hours",
+        "cross_comp_matches_7d"
+      ],
+      "usage_note": "必须保留来源链接、观测时间和人工核验说明。"
+    },
+    "the_odds_api": {
+      "license_status": "account_limited",
+      "automatic_ingest": true,
+      "allowed_signal_types": ["odds_snapshot"],
+      "documentation_url": "https://the-odds-api.com/liveapi/guides/v4/",
+      "usage_note": "当前快照可归档；历史快照依赖付费套餐和配额，必须保留 API 返回的 snapshot timestamp。"
+    },
+    "statsbomb_open_data": {
+      "license_status": "research_allowed_with_attribution",
+      "automatic_ingest": true,
+      "allowed_signal_types": ["historical_team_strength"],
+      "documentation_url": "https://github.com/statsbomb/open-data",
+      "usage_note": "事件和阵容多为赛后数据，只能形成截至比赛前的历史强度；不得伪装为赛前确认阵容。"
+    },
+    "api_football": {
+      "license_status": "account_limited",
+      "automatic_ingest": true,
+      "allowed_signal_types": ["absence", "confirmed_starter", "cross_comp_matches_7d", "odds_snapshot"],
+      "documentation_url": "https://www.api-football.com/documentation-v3",
+      "usage_note": "令牌只从 API_FOOTBALL_KEY 读取。当前 Free 套餐每日 100 次、每分钟 10 次；按赛事 coverage 决定阵容、伤停和赔率是否可用。现有自动入库只处理唯一映射后的伤停与确认阵容；赔率必须保存不可变赛前快照并完成体彩 match_id 映射后才能进入盘口研究。API 自带 predictions 仅作旁路对照，不得直接触发投注。"
+    },
+    "sportmonks": {
+      "license_status": "account_limited",
+      "automatic_ingest": true,
+      "allowed_signal_types": [
+        "odds_snapshot",
+        "absence",
+        "confirmed_starter",
+        "formation"
+      ],
+      "documentation_url": "https://docs.sportmonks.com/football-api/",
+      "usage_note": "令牌只从 SPORTMONKS_API_TOKEN 读取；当前账户覆盖丹麦 Superliga 与苏格兰 Premiership 体系。必须先完成体彩场次映射并保留 observed_at，SportMonks predictions/xGFixture 当前无权限，不得用空值或猜测替代。"
+    },
+    "serpapi": {
+      "license_status": "account_limited",
+      "automatic_ingest": false,
+      "allowed_signal_types": [],
+      "documentation_url": "https://serpapi.com/search-api",
+      "usage_note": "只用于发现球队官网、联赛官网、可靠媒体的赛前新闻候选链接。搜索标题和摘要不能直接作为模型事实或投注依据；必须打开原始页面、核验发布时间与主体，并按 manual_verified 流程入表。令牌只从 SERPAPI_API_KEY 读取。"
+    },
+    "football_data_org": {
+      "license_status": "account_limited",
+      "automatic_ingest": true,
+      "allowed_signal_types": ["schedule", "result", "standing", "team_baseline", "cross_comp_matches_7d"],
+      "documentation_url": "https://www.football-data.org/documentation/quickstart",
+      "usage_note": "令牌只从 FOOTBALL_DATA_TOKEN 读取。覆盖英超、西甲、德甲、法甲、意甲、荷甲、葡超的赛程、赛果、积分榜和球队基础资料；保存不可变原始响应及累计历史。不能替代体彩在售状态或体彩赔率。赛果仅在官方体彩赛果不可用且球队与开赛时间唯一映射时作为后备；v2 输出只是无赔率赛果补充表，不得直接混入生产训练。"
+    },
+    "kleague_official_portal": {
+      "license_status": "permission_required",
+      "automatic_ingest": false,
+      "allowed_signal_types": [],
+      "usage_note": "未取得许可前禁止复制、存储和模型使用。"
+    }
+  }
+}

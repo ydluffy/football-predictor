@@ -1,0 +1,4 @@
+# Copy Transfermarkt injury/suspension table rows into this pipe-delimited shape.
+# team | player | status_or_type | reason | source_url
+Germany | Example Player | injury | muscle injury | https://www.transfermarkt.com/example
+Argentina | Example Suspended Player | suspension | red card suspension | https://www.transfermarkt.com/example-suspended
