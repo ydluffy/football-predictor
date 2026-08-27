@@ -11,6 +11,48 @@ function safeLog(x: number) {
 
 type Outcome = "H" | "D" | "A";
 
+type BacktestFixture = {
+  fixture_id: number;
+  utc_date: string | null;
+  status: string | null;
+  home_team_name: string | null;
+  away_team_name: string | null;
+  home_score: number | null;
+  away_score: number | null;
+  competition_code: string | null;
+  competition_name: string | null;
+};
+
+type BacktestPredictionRow = {
+  fixture_id: number;
+  generated_at: string | null;
+  p_home: number;
+  p_draw: number;
+  p_away: number;
+  fixtures: BacktestFixture | BacktestFixture[] | null;
+};
+
+type BacktestItem = {
+  fixture_id: number;
+  utc_date: string | null;
+  competition: string | null;
+  home: string | null;
+  away: string | null;
+  score: string;
+  actual: Outcome;
+  pred: Outcome;
+  p_home: number;
+  p_draw: number;
+  p_away: number;
+  logloss: number;
+};
+
+function predictedOutcome(probs: Record<Outcome, number>): Outcome {
+  if (probs.H >= probs.D && probs.H >= probs.A) return "H";
+  if (probs.D >= probs.A) return "D";
+  return "A";
+}
+
 function outcomeFromScores(home: number, away: number): Outcome {
   if (home > away) return "H";
   if (home < away) return "A";
@@ -40,15 +82,19 @@ export async function GET(req: Request) {
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
 
-  const items: any[] = [];
+  const items: BacktestItem[] = [];
   let n = 0;
   let correct = 0;
   let loglossSum = 0;
   let brierSum = 0;
-  const cm = { H: { H: 0, D: 0, A: 0 }, D: { H: 0, D: 0, A: 0 }, A: { H: 0, D: 0, A: 0 } };
+  const cm: Record<Outcome, Record<Outcome, number>> = {
+    H: { H: 0, D: 0, A: 0 },
+    D: { H: 0, D: 0, A: 0 },
+    A: { H: 0, D: 0, A: 0 },
+  };
 
-  for (const r of rows || []) {
-    const fx: any = (r as any).fixtures;
+  for (const r of (rows || []) as BacktestPredictionRow[]) {
+    const fx = Array.isArray(r.fixtures) ? r.fixtures[0] : r.fixtures;
     if (!fx) continue;
     const hs = fx.home_score;
     const as = fx.away_score;
@@ -61,10 +107,12 @@ export async function GET(req: Request) {
     const pD = clamp01(Number(r.p_draw));
     const pA = clamp01(Number(r.p_away));
     const s = pH + pD + pA;
-    const probs = s > 0 ? { H: pH / s, D: pD / s, A: pA / s } : { H: 1 / 3, D: 1 / 3, A: 1 / 3 };
+    const probs: Record<Outcome, number> = s > 0
+      ? { H: pH / s, D: pD / s, A: pA / s }
+      : { H: 1 / 3, D: 1 / 3, A: 1 / 3 };
 
     const actual = outcomeFromScores(hs, as);
-    const pred: Outcome = (Object.entries(probs).sort((a, b) => (b[1] as number) - (a[1] as number))[0][0] as Outcome);
+    const pred = predictedOutcome(probs);
 
     n += 1;
     if (pred === actual) correct += 1;

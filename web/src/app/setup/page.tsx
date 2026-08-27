@@ -18,6 +18,16 @@ type StatusResponse = {
   };
 };
 
+type BacktestResponse = {
+  summary?: {
+    n: number;
+    accuracy: number | null;
+    logloss: number | null;
+    brier: number | null;
+  };
+  error?: string;
+};
+
 function isoToday() {
   const d = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Shanghai" }));
   const y = d.getFullYear();
@@ -36,7 +46,7 @@ export default function SetupPage() {
   const [snapshotDate, setSnapshotDate] = useState(isoToday());
   const [btFrom, setBtFrom] = useState(isoToday());
   const [btTo, setBtTo] = useState(isoToday());
-  const [btResult, setBtResult] = useState<any | null>(null);
+  const [btResult, setBtResult] = useState<BacktestResponse | null>(null);
 
   async function refresh() {
     const r = await fetch("/api/status", { cache: "no-store" });
@@ -118,7 +128,7 @@ export default function SetupPage() {
     try {
       const url = `/api/backtest?date_from=${encodeURIComponent(btFrom)}&date_to=${encodeURIComponent(btTo)}`;
       const r = await fetch(url, { cache: "no-store" });
-      const j = await r.json();
+      const j = (await r.json()) as BacktestResponse;
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       setBtResult(j);
       setMsg("✅ 回测完成（结果已显示在下方）");

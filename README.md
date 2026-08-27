@@ -30,8 +30,18 @@ From the repository root:
 .\scripts\project.ps1 train --model-type logit --feature-version v3
 .\scripts\project.ps1 api
 .\scripts\project.ps1 web-lint
+.\scripts\project.ps1 web-typecheck
 .\scripts\project.ps1 web-build
+.\scripts\project.ps1 verify
 ```
+
+## CI quality gates
+
+GitHub Actions runs two independent jobs on pushes and pull requests:
+
+- Python 3.12: install `football-predictor[dev]` and run the complete pytest suite.
+- Node.js 22: install from `package-lock.json`, then run ESLint, TypeScript
+  checking, and the optimized Next.js production build.
 
 ## Local verification
 

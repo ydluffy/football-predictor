@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("test", "train", "api", "web-lint", "web-build")]
+    [ValidateSet("test", "train", "api", "web-lint", "web-typecheck", "web-build", "verify")]
     [string]$Command,
 
     [Parameter(ValueFromRemainingArguments = $true)]
@@ -39,7 +39,7 @@ function Invoke-ProjectCommand {
     }
 }
 
-if ($Command -in @("test", "train", "api") -and -not (Test-Path -LiteralPath $pythonExecutable -PathType Leaf)) {
+if ($Command -in @("test", "train", "api", "verify") -and -not (Test-Path -LiteralPath $pythonExecutable -PathType Leaf)) {
     throw "Python environment not found at $pythonExecutable. Create football-predictor/.venv first."
 }
 
@@ -68,10 +68,25 @@ switch ($Command) {
             -Executable "npm" `
             -Arguments (@("run", "lint", "--") + $CommandArguments)
     }
+    "web-typecheck" {
+        Invoke-ProjectCommand `
+            -WorkingDirectory $webProjectPath `
+            -Executable "npm" `
+            -Arguments (@("run", "typecheck", "--") + $CommandArguments)
+    }
     "web-build" {
         Invoke-ProjectCommand `
             -WorkingDirectory $webProjectPath `
             -Executable "npm" `
             -Arguments (@("run", "build", "--") + $CommandArguments)
+    }
+    "verify" {
+        Invoke-ProjectCommand `
+            -WorkingDirectory $pythonProjectPath `
+            -Executable $pythonExecutable `
+            -Arguments @("-m", "pytest", "-q", "--basetemp", "_tmp/project-entry-pytest")
+        Invoke-ProjectCommand -WorkingDirectory $webProjectPath -Executable "npm" -Arguments @("run", "lint")
+        Invoke-ProjectCommand -WorkingDirectory $webProjectPath -Executable "npm" -Arguments @("run", "typecheck")
+        Invoke-ProjectCommand -WorkingDirectory $webProjectPath -Executable "npm" -Arguments @("run", "build")
     }
 }

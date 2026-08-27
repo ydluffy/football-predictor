@@ -5,6 +5,59 @@ type ChatMessage = {
   content: string;
 };
 
+type ToolCall = {
+  id: string;
+  function?: {
+    name?: string;
+    arguments?: string;
+  };
+};
+
+type RouterMessage = {
+  role: "user" | "assistant" | "system" | "tool";
+  content: string;
+  tool_calls?: ToolCall[];
+  tool_call_id?: string;
+  name?: string;
+};
+
+type ToolDefinition = {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: Record<string, unknown>;
+  };
+};
+
+type ToolArguments = {
+  date?: string;
+  date_from?: string;
+  date_to?: string;
+  bookmaker?: string | number;
+  items?: unknown[];
+};
+
+type OpenRouterResponse = {
+  choices?: Array<{
+    message?: {
+      content?: string | null;
+      tool_calls?: ToolCall[];
+    };
+  }>;
+};
+
+function parseJsonObject(text: string): Record<string, unknown> | null {
+  try {
+    const parsed: unknown = JSON.parse(text);
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>)
+      : null;
+  } catch {
+    return null;
+  }
+}
+
 function todayIsoDate(tz = "Asia/Shanghai") {
   const fmt = new Intl.DateTimeFormat("en-CA", {
     timeZone: tz,
@@ -59,12 +112,12 @@ function sanitizeAssistantOutput(text: string) {
   return out.join("\n").trim();
 }
 
-async function openRouterChat(messages: any[], tools?: any[]) {
+async function openRouterChat(messages: RouterMessage[], tools?: ToolDefinition[]) {
   const apiKey = process.env.OPENROUTER_API_KEY || process.env.OPEN_ROUTER_API_KEY;
   const model = process.env.OPENROUTER_MODEL || "deepseek/deepseek-chat";
   if (!apiKey) throw new Error("missing OPENROUTER_API_KEY");
 
-  const payload: any = { model, messages };
+  const payload: { model: string; messages: RouterMessage[]; tools?: ToolDefinition[] } = { model, messages };
   if (tools) payload.tools = tools;
 
   const resp = await fetch("https://openrouter.ai/api/v1/chat/completions", {
@@ -78,7 +131,7 @@ async function openRouterChat(messages: any[], tools?: any[]) {
 
   const raw = await resp.text();
   if (!resp.ok) throw new Error(`openrouter_http ${resp.status}: ${raw.slice(0, 800)}`);
-  const json = JSON.parse(raw);
+  const json = JSON.parse(raw) as OpenRouterResponse;
   const message = json?.choices?.[0]?.message || {};
   return { content: message.content || "", tool_calls: message.tool_calls || [] };
 }
@@ -97,9 +150,9 @@ export async function POST(req: Request) {
       "当用户说“今天/昨日/明日”但没有明确给出 YYYY-MM-DD 时，你必须使用上面的日期进行推导。\n" +
       "输出尽量使用 Markdown（表格/列表），并用 ⚽📈💡 等图标提升可读性。";
 
-    const msgs: any[] = [{ role: "system", content: sys }, ...incoming];
+    const msgs: RouterMessage[] = [{ role: "system", content: sys }, ...incoming];
 
-  const tools = [
+  const tools: ToolDefinition[] = [
     {
       type: "function",
       function: {
@@ -191,23 +244,26 @@ export async function POST(req: Request) {
 
   const toolCall = first.tool_calls[0];
   const name = toolCall?.function?.name;
-  let args: any = {};
+  let toolArgs: ToolArguments = {};
   try {
-    args = JSON.parse(toolCall?.function?.arguments || "{}");
+    const parsed: unknown = JSON.parse(toolCall?.function?.arguments || "{}");
+    if (parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)) {
+      toolArgs = parsed as ToolArguments;
+    }
   } catch {
-    args = {};
+    toolArgs = {};
   }
 
-  const date = resolveTargetDate(lastUser, args.date);
+  const date = resolveTargetDate(lastUser, toolArgs.date);
   let toolResult = "";
 
   if (name === "get_fixtures") {
     const base = new URL(req.url).origin;
     // First attempt: requested date
-    let r = await fetch(`${base}/api/fixtures?date=${encodeURIComponent(date)}`, { cache: "no-store" });
-    let txt = await r.text();
+    const r = await fetch(`${base}/api/fixtures?date=${encodeURIComponent(date)}`, { cache: "no-store" });
+    const txt = await r.text();
     try {
-      const j = JSON.parse(txt);
+      const j = parseJsonObject(txt);
       if (j?.count === 0) {
         // Auto-fallback: try yesterday then tomorrow (Asia/Shanghai)
         const d = new Date(`${date}T00:00:00+08:00`);
@@ -220,8 +276,8 @@ export async function POST(req: Request) {
           const rr = await fetch(`${base}/api/fixtures?date=${encodeURIComponent(dstr)}`, { cache: "no-store" });
           const ttxt = await rr.text();
           try {
-            const jj = JSON.parse(ttxt);
-            if (jj?.count > 0) {
+            const jj = parseJsonObject(ttxt);
+            if (typeof jj?.count === "number" && jj.count > 0) {
               toolResult = JSON.stringify({ ...jj, fallback_used: true, requested_date: date, used_date: dstr });
               break;
             }
@@ -229,7 +285,7 @@ export async function POST(req: Request) {
             /* ignore */
           }
         }
-        if (!toolResult) {
+        if (!toolResult && j) {
           toolResult = JSON.stringify({ ...j, fallback_used: false, requested_date: date });
         }
       } else {
@@ -247,11 +303,7 @@ export async function POST(req: Request) {
         body: JSON.stringify({ date: d }),
       });
       const txt = await r.text();
-      try {
-        return { json: JSON.parse(txt), raw: txt };
-      } catch {
-        return { json: null, raw: txt };
-      }
+      return { json: parseJsonObject(txt), raw: txt };
     };
 
     const firstRun = await run(date);
@@ -263,7 +315,7 @@ export async function POST(req: Request) {
       let used = date;
       for (const d of candidates) {
         const rr = await run(d);
-        if (rr.json?.count > 0) {
+        if (typeof rr.json?.count === "number" && rr.json.count > 0) {
           picked = rr;
           used = d;
           break;
@@ -278,8 +330,8 @@ export async function POST(req: Request) {
       toolResult = firstRun.json ? JSON.stringify({ ...firstRun.json, requested_date: date }) : firstRun.raw;
     }
   } else if (name === "ingest_football_data") {
-    const dateFrom = args.date_from || date;
-    const dateTo = args.date_to || date;
+    const dateFrom = toolArgs.date_from || date;
+    const dateTo = toolArgs.date_to || date;
     const r = await fetch(
       `${new URL(req.url).origin}/api/ingest/football-data?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`,
       { method: "POST" }
@@ -288,12 +340,12 @@ export async function POST(req: Request) {
   } else if (name === "ingest_odds") {
     const base = new URL(req.url).origin;
     const qs = new URLSearchParams({ date });
-    if (args.bookmaker) qs.set("bookmaker", String(args.bookmaker));
+    if (toolArgs.bookmaker) qs.set("bookmaker", String(toolArgs.bookmaker));
     const r = await fetch(`${base}/api/ingest/odds?${qs.toString()}`, { method: "POST" });
     toolResult = await r.text();
   } else if (name === "upsert_odds") {
     const base = new URL(req.url).origin;
-    const items = Array.isArray(args.items) ? args.items : [];
+    const items = Array.isArray(toolArgs.items) ? toolArgs.items : [];
     if (!items.length) {
       toolResult = JSON.stringify({ error: "missing items[]" });
     } else {
@@ -303,8 +355,8 @@ export async function POST(req: Request) {
         body: JSON.stringify({ odds: items }),
       });
       const utxt = await ur.text();
-      if (args.date || /(今天|今日|昨天|明天)/.test(lastUser)) {
-        const d = resolveTargetDate(lastUser, args.date);
+      if (toolArgs.date || /(今天|今日|昨天|明天)/.test(lastUser)) {
+        const d = resolveTargetDate(lastUser, toolArgs.date);
         const pr = await fetch(`${base}/api/predictions`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },

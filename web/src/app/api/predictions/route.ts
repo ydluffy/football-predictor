@@ -4,20 +4,21 @@ import { topScorelines, totalsProbs, winDrawLoseFromLambdas } from "@/lib/poisso
 import { evAndKelly } from "@/lib/kelly";
 import { competitionNameZh, formatLocalTimeFromUtc, statusZh, teamNameZhMaybe } from "@/lib/zh";
 import { translateTeamNamesWithCache } from "@/lib/translateTeamNames";
+import type { FixtureListRow, LeagueScoreRow, OddsRow, RecentFinishedMatchRow } from "@/lib/databaseTypes";
 
 type PredictionOut = {
   fixture_id: number;
-  competition_code?: string;
+  competition_code?: string | null;
   competition_name?: string | null;
-  competition_name_zh?: string;
+  competition_name_zh?: string | null;
   utc_date?: string | null;
   kickoff_time_zh?: string;
   status?: string | null;
   status_zh?: string;
   home_team_name?: string | null;
-  home_team_name_zh?: string;
+  home_team_name_zh?: string | null;
   away_team_name?: string | null;
-  away_team_name_zh?: string;
+  away_team_name_zh?: string | null;
   p_home: number;
   p_draw: number;
   p_away: number;
@@ -58,7 +59,7 @@ async function fetchRecentFinishedMatches(sb: ReturnType<typeof supabaseAdmin>, 
     .order("utc_date", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);
-  return data || [];
+  return (data || []) as RecentFinishedMatchRow[];
 }
 
 async function fetchLeagueAverages(sb: ReturnType<typeof supabaseAdmin>, competitionCode: string, limit = 500) {
@@ -70,8 +71,9 @@ async function fetchLeagueAverages(sb: ReturnType<typeof supabaseAdmin>, competi
     .order("utc_date", { ascending: false })
     .limit(limit);
   if (error) throw new Error(error.message);
-  const homeGoals = (data || []).map((r: any) => r.home_score).filter((x: any) => typeof x === "number") as number[];
-  const awayGoals = (data || []).map((r: any) => r.away_score).filter((x: any) => typeof x === "number") as number[];
+  const rows = (data || []) as LeagueScoreRow[];
+  const homeGoals = rows.map((r) => r.home_score).filter((x): x is number => typeof x === "number");
+  const awayGoals = rows.map((r) => r.away_score).filter((x): x is number => typeof x === "number");
   return {
     avgHome: mean(homeGoals) || 1.35,
     avgAway: mean(awayGoals) || 1.05,
@@ -79,7 +81,7 @@ async function fetchLeagueAverages(sb: ReturnType<typeof supabaseAdmin>, competi
   };
 }
 
-function teamStats(matches: any[], teamId: number) {
+function teamStats(matches: RecentFinishedMatchRow[], teamId: number) {
   const gf: number[] = [];
   const ga: number[] = [];
   for (const m of matches) {
@@ -101,7 +103,7 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as { date?: string; fixture_ids?: number[] };
   const sb = supabaseAdmin();
 
-  let fixtures: any[] = [];
+  let fixtures: FixtureListRow[] = [];
 
   if (body.fixture_ids?.length) {
     const { data, error } = await sb
@@ -109,7 +111,7 @@ export async function POST(req: Request) {
       .select("fixture_id,competition_code,competition_name,utc_date,status,home_team_id,home_team_name,away_team_id,away_team_name")
       .in("fixture_id", body.fixture_ids);
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    fixtures = data || [];
+    fixtures = (data || []) as FixtureListRow[];
   } else if (body.date) {
     const from = new Date(`${body.date}T00:00:00.000Z`).toISOString();
     const to = new Date(new Date(`${body.date}T00:00:00.000Z`).getTime() + 24 * 3600 * 1000).toISOString();
@@ -120,7 +122,7 @@ export async function POST(req: Request) {
       .lt("utc_date", to)
       .order("utc_date", { ascending: true });
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
-    fixtures = data || [];
+    fixtures = (data || []) as FixtureListRow[];
   } else {
     return NextResponse.json({ error: "missing date or fixture_ids" }, { status: 400 });
   }
@@ -133,10 +135,10 @@ export async function POST(req: Request) {
 
   // Fetch odds if available
   const fixtureIds = fixtures.map((f) => f.fixture_id);
-  let oddsMap = new Map<number, { odds_home: number | null; odds_draw: number | null; odds_away: number | null }>();
+  const oddsMap = new Map<number, { odds_home: number | null; odds_draw: number | null; odds_away: number | null }>();
   if (fixtureIds.length) {
     const { data: oddsRows } = await sb.from("odds").select("fixture_id,odds_home,odds_draw,odds_away").in("fixture_id", fixtureIds);
-    for (const r of oddsRows || []) {
+    for (const r of (oddsRows || []) as OddsRow[]) {
       oddsMap.set(r.fixture_id, { odds_home: r.odds_home, odds_draw: r.odds_draw, odds_away: r.odds_away });
     }
   }

@@ -16,9 +16,14 @@ dependencies = [
   "uvicorn",
   "requests",
   "beautifulsoup4",
-  "pytest",
   "pydantic",
   "loguru",
+]
+
+[project.optional-dependencies]
+dev = [
+  "httpx>=0.27",
+  "pytest>=8.0",
 ]
 
 [tool.setuptools]
