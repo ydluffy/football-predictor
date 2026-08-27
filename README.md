@@ -49,6 +49,8 @@ FastAPI application assembly remains in `football-predictor/src/api/main.py`.
 Independent endpoint groups belong under `football-predictor/src/api/routes/`
 Router factories receive cross-cutting service dependencies explicitly; domain
 routers may depend directly on the domain package they exclusively expose.
+Dependency-free server-rendered tools live in `football-predictor/src/api/views.py`;
+`main.py` only binds those view constants to HTTP endpoints.
 
 ## Local verification
 

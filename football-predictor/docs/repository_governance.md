@@ -66,3 +66,9 @@ as errors. Resolve a warning at its source instead of suppressing it in a test.
 Source files use UTF-8 and repository-defined line endings from `.editorconfig`
 and `.gitattributes`. User-visible non-ASCII text requires a regression test
 when encoding damage would alter API behavior, intent matching, or HTML output.
+
+Large server-rendered HTML/CSS/JavaScript pages belong in `src/api/views.py`,
+not in application assembly or route handlers. View tests lock their important
+DOM identifiers and backend endpoint references. The API assembly module also
+has a line-count regression guard so new responsibilities cannot silently turn
+it back into a monolith.
