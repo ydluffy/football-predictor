@@ -92,7 +92,7 @@ def test_multi_sport_import_combines_successful_sports(monkeypatch, tmp_path):
 
     audit = multi.import_multi_sport_odds(
         output_dir=tmp_path,
-        api_key="token",
+        api_key="token",  # pragma: allowlist secret
         sport_keys=["soccer_usa_mls", "soccer_brazil_campeonato"],
         regions="eu",
         markets="h2h,totals",
@@ -128,7 +128,7 @@ def test_multi_sport_import_keeps_partial_success(monkeypatch, tmp_path):
 
     audit = multi.import_multi_sport_odds(
         output_dir=tmp_path,
-        api_key="token",
+        api_key="token",  # pragma: allowlist secret
         sport_keys=["soccer_fifa_world_cup", "bad_sport"],
         regions="eu",
         markets="h2h",

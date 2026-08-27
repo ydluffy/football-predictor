@@ -19,7 +19,9 @@ def test_sportmonks_client_uses_authorization_header_not_query_token(monkeypatch
     request = Mock(return_value=response)
     monkeypatch.setattr("world_cup.sportmonks_adapter.requests.get", request)
 
-    SportMonksClient(api_token="secret").get("leagues", {"page": 1})
+    SportMonksClient(api_token="secret").get(  # pragma: allowlist secret
+        "leagues", {"page": 1}
+    )
 
     _, kwargs = request.call_args
     assert kwargs["headers"] == {"Authorization": "secret"}
@@ -33,7 +35,9 @@ def test_sportmonks_client_redacts_token_from_transport_errors(monkeypatch):
     monkeypatch.setattr("world_cup.sportmonks_adapter.requests.get", fail_request)
 
     try:
-        SportMonksClient(api_token="secret").get("leagues")
+        SportMonksClient(api_token="secret").get(  # pragma: allowlist secret
+            "leagues"
+        )
     except RuntimeError as exc:
         assert str(exc) == "SportMonks request failed (network_error)"
         assert "secret" not in str(exc)

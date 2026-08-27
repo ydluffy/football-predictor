@@ -29,8 +29,13 @@ From the repository root:
 .\scripts\project.ps1 test
 .\scripts\project.ps1 train --model-type logit --feature-version v3
 .\scripts\project.ps1 api
+.\scripts\project.ps1 python-lock
+.\scripts\project.ps1 python-lock-check
 .\scripts\project.ps1 python-lint
 .\scripts\project.ps1 python-typecheck
+.\scripts\project.ps1 secret-scan
+.\scripts\project.ps1 dependency-audit
+.\scripts\project.ps1 security
 .\scripts\project.ps1 web-lint
 .\scripts\project.ps1 web-typecheck
 .\scripts\project.ps1 web-build
@@ -41,12 +46,24 @@ From the repository root:
 
 GitHub Actions runs two independent jobs on pushes and pull requests:
 
-- Python 3.12: install `football-predictor[dev]`, run Ruff over the governed API
-  boundary, run mypy over the typed transport/operations boundary, and run the
-  complete pytest suite. Deprecation warnings, future warnings, and ambiguous
-  date parsing warnings are treated as test failures.
+- Python 3.12: install the exact versions in `football-predictor/requirements.txt`,
+  validate the lock, scan tracked files for secrets, audit dependencies, run
+  Ruff and mypy, and run the complete pytest suite. Deprecation warnings,
+  future warnings, and ambiguous date parsing warnings are treated as failures.
 - Node.js 22: install from `package-lock.json`, then run ESLint, TypeScript
-  checking, and the optimized Next.js production build.
+  checking, dependency audit, and the optimized Next.js production build.
+
+## Dependency and security governance
+
+`football-predictor/requirements.txt` is the generated Python lock and contains
+exact runtime and development versions. After changing `pyproject.toml`, run
+`python-lock`, review the diff, then run `verify` and `security`. `verify` keeps
+the deterministic lock and tracked-file secret checks offline; `security` adds
+the online Python and npm vulnerability audits.
+
+GitHub Dependabot checks Python and npm dependencies weekly, groups compatible
+minor/patch updates, and checks GitHub Actions monthly. Update pull requests
+must still pass the complete CI gates; they are not auto-merged.
 
 FastAPI application assembly remains in `football-predictor/src/api/main.py`.
 Independent endpoint groups belong under `football-predictor/src/api/routes/`

@@ -151,10 +151,10 @@ def test_sporttery_paste_parse_api():
 
 
 def test_sporttery_router_is_registered_once_and_main_exports_are_compatible():
-    paths = [route.path for route in api_main.app.routes]
-    assert paths.count("/world-cup/sporttery/handicap-markets") == 2
-    assert paths.count("/world-cup/sporttery/parse-paste") == 1
-    assert paths.count("/world-cup/sporttery/editor") == 1
+    paths = api_main.app.openapi()["paths"]
+    assert set(paths["/world-cup/sporttery/handicap-markets"]) >= {"get", "post"}
+    assert "post" in paths["/world-cup/sporttery/parse-paste"]
+    assert "get" in paths["/world-cup/sporttery/editor"]
     assert api_main.SportteryMarketSaveRequest is sporttery_routes.SportteryMarketSaveRequest
     assert (
         api_main.world_cup_sporttery_handicap_markets

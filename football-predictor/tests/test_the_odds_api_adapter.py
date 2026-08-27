@@ -115,4 +115,4 @@ def test_explicit_empty_key_does_not_fall_back_to_environment(monkeypatch):
     monkeypatch.setenv("THE_ODDS_API_KEY", "environment-key")
 
     assert TheOddsApiClient(api_key="").configured is False
-    assert TheOddsApiClient().api_key == "environment-key"
+    assert TheOddsApiClient().api_key == "environment-key"  # pragma: allowlist secret

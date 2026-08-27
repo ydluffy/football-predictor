@@ -1,23 +1,22 @@
 from __future__ import annotations
 
-from fastapi import FastAPI
-
 from api.routes.operations import RunExperimentRequest, build_operations_router
 
 
 def _endpoints() -> dict[str, object]:
-    app = FastAPI()
-    app.include_router(
-        build_operations_router(
-            model_status=lambda: {"model_loaded": True, "model_path": "model.pkl"},
-            artifacts=lambda: {"artifact": "ready"},
-            analyze=lambda: {"analysis": "ready"},
-            explain_high_brier=lambda: {"reason": "calibration"},
-            run_experiment=lambda command: {"command": command},
-            system_status=lambda: {"status": "ready"},
-        )
+    router = build_operations_router(
+        model_status=lambda: {"model_loaded": True, "model_path": "model.pkl"},
+        artifacts=lambda: {"artifact": "ready"},
+        analyze=lambda: {"analysis": "ready"},
+        explain_high_brier=lambda: {"reason": "calibration"},
+        run_experiment=lambda command: {"command": command},
+        system_status=lambda: {"status": "ready"},
     )
-    return {route.path: route.endpoint for route in app.routes}
+    return {
+        route.path: route.endpoint
+        for route in router.routes
+        if hasattr(route, "path") and hasattr(route, "endpoint")
+    }
 
 
 def test_health_route_reports_model_status() -> None:

@@ -97,14 +97,14 @@ def test_snapshot_is_immutable_audited_and_never_writes_ledger(tmp_path):
     first = capture_sporttery_the_odds_snapshot(
         scan=scan,
         snapshot_root=tmp_path,
-        api_key="test-key",
+        api_key="test-key",  # pragma: allowlist secret
         snapshot_type="confirm",
         fetcher=fake_fetcher,
     )
     second = capture_sporttery_the_odds_snapshot(
         scan=scan,
         snapshot_root=tmp_path,
-        api_key="test-key",
+        api_key="test-key",  # pragma: allowlist secret
         snapshot_type="confirm",
         fetcher=fake_fetcher,
     )
@@ -144,7 +144,7 @@ def test_invalid_early_confirmation_cannot_fetch_external_odds(tmp_path):
                 "fixtures": [_fixture()],
             },
             snapshot_root=tmp_path,
-            api_key="test-key",
+            api_key="test-key",  # pragma: allowlist secret
             snapshot_type="confirm",
         )
 

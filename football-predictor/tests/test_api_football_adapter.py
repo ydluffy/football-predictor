@@ -19,7 +19,7 @@ def test_api_football_client_uses_header_and_redacts_transport_errors(monkeypatc
     request = Mock(return_value=response)
     monkeypatch.setattr("world_cup.api_football_adapter.requests.get", request)
 
-    ApiFootballClient(api_key="secret").get("status")
+    ApiFootballClient(api_key="secret").get("status")  # pragma: allowlist secret
 
     _, kwargs = request.call_args
     assert kwargs["headers"] == {"x-apisports-key": "secret"}
@@ -30,7 +30,7 @@ def test_api_football_client_uses_header_and_redacts_transport_errors(monkeypatc
 
     monkeypatch.setattr("world_cup.api_football_adapter.requests.get", fail_request)
     try:
-        ApiFootballClient(api_key="secret").get("status")
+        ApiFootballClient(api_key="secret").get("status")  # pragma: allowlist secret
     except RuntimeError as exc:
         assert str(exc) == "API-Football request failed (network_error)"
         assert "secret" not in str(exc)

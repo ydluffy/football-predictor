@@ -1,7 +1,7 @@
 [CmdletBinding()]
 param(
     [Parameter(Mandatory = $true, Position = 0)]
-    [ValidateSet("test", "train", "api", "python-lint", "python-typecheck", "web-lint", "web-typecheck", "web-build", "verify")]
+    [ValidateSet("test", "train", "api", "python-lock", "python-lock-check", "python-lint", "python-typecheck", "secret-scan", "dependency-audit", "security", "web-lint", "web-typecheck", "web-build", "verify")]
     [string]$Command,
 
     [Parameter(ValueFromRemainingArguments = $true)]
@@ -13,8 +13,8 @@ $pythonProjectPath = Join-Path $repositoryRoot "football-predictor"
 $webProjectPath = Join-Path $repositoryRoot "web"
 $pythonExecutable = Join-Path $pythonProjectPath ".venv\Scripts\python.exe"
 $projectCommandArguments = @($CommandArguments | Where-Object { $_ })
-$pythonLintTargets = @("src/api/routes", "src/api/services", "tests/test_chat_routes.py", "tests/test_chat_http_integration.py", "tests/test_operations_routes.py", "tests/test_research_copilot_service.py")
-$pythonTypecheckTargets = @("src/api/services/chat_client.py", "src/api/routes/operations.py")
+$pythonLintTargets = @("src/api/routes", "src/api/services", "scripts/check_dependency_lock.py", "scripts/check_secrets.py", "tests/test_chat_routes.py", "tests/test_chat_http_integration.py", "tests/test_operations_routes.py", "tests/test_research_copilot_service.py")
+$pythonTypecheckTargets = @("src/api/services/chat_client.py", "src/api/routes/operations.py", "scripts/check_dependency_lock.py", "scripts/check_secrets.py")
 
 function Invoke-ProjectCommand {
     param(
@@ -42,7 +42,7 @@ function Invoke-ProjectCommand {
     }
 }
 
-if ($Command -in @("test", "train", "api", "python-lint", "python-typecheck", "verify") -and -not (Test-Path -LiteralPath $pythonExecutable -PathType Leaf)) {
+if ($Command -in @("test", "train", "api", "python-lock", "python-lock-check", "python-lint", "python-typecheck", "secret-scan", "dependency-audit", "security", "verify") -and -not (Test-Path -LiteralPath $pythonExecutable -PathType Leaf)) {
     throw "Python environment not found at $pythonExecutable. Create football-predictor/.venv first."
 }
 
@@ -65,6 +65,18 @@ switch ($Command) {
             -Executable $pythonExecutable `
             -Arguments (@("-m", "uvicorn", "api.main:app", "--reload") + $projectCommandArguments)
     }
+    "python-lock" {
+        Invoke-ProjectCommand `
+            -WorkingDirectory $pythonProjectPath `
+            -Executable $pythonExecutable `
+            -Arguments @("-m", "piptools", "compile", "--upgrade", "--extra", "dev", "--resolver", "backtracking", "--strip-extras", "--allow-unsafe", "--no-emit-index-url", "--no-emit-trusted-host", "--output-file", "requirements.txt", "pyproject.toml")
+    }
+    "python-lock-check" {
+        Invoke-ProjectCommand `
+            -WorkingDirectory $pythonProjectPath `
+            -Executable $pythonExecutable `
+            -Arguments @("scripts/check_dependency_lock.py")
+    }
     "python-lint" {
         Invoke-ProjectCommand `
             -WorkingDirectory $pythonProjectPath `
@@ -76,6 +88,40 @@ switch ($Command) {
             -WorkingDirectory $pythonProjectPath `
             -Executable $pythonExecutable `
             -Arguments (@("-m", "mypy", "--explicit-package-bases") + $pythonTypecheckTargets + $projectCommandArguments)
+    }
+    "secret-scan" {
+        Invoke-ProjectCommand `
+            -WorkingDirectory $pythonProjectPath `
+            -Executable $pythonExecutable `
+            -Arguments @("scripts/check_secrets.py")
+    }
+    "dependency-audit" {
+        Invoke-ProjectCommand `
+            -WorkingDirectory $pythonProjectPath `
+            -Executable $pythonExecutable `
+            -Arguments @("scripts/check_dependency_lock.py")
+        Invoke-ProjectCommand `
+            -WorkingDirectory $pythonProjectPath `
+            -Executable $pythonExecutable `
+            -Arguments @("-m", "pip_audit", "--requirement", "requirements.txt", "--no-deps", "--disable-pip", "--progress-spinner", "off")
+    }
+    "security" {
+        Invoke-ProjectCommand `
+            -WorkingDirectory $pythonProjectPath `
+            -Executable $pythonExecutable `
+            -Arguments @("scripts/check_dependency_lock.py")
+        Invoke-ProjectCommand `
+            -WorkingDirectory $pythonProjectPath `
+            -Executable $pythonExecutable `
+            -Arguments @("scripts/check_secrets.py")
+        Invoke-ProjectCommand `
+            -WorkingDirectory $pythonProjectPath `
+            -Executable $pythonExecutable `
+            -Arguments @("-m", "pip_audit", "--requirement", "requirements.txt", "--no-deps", "--disable-pip", "--progress-spinner", "off")
+        Invoke-ProjectCommand `
+            -WorkingDirectory $webProjectPath `
+            -Executable "npm" `
+            -Arguments @("audit", "--audit-level=high")
     }
     "web-lint" {
         Invoke-ProjectCommand `
@@ -96,6 +142,14 @@ switch ($Command) {
             -Arguments (@("run", "build", "--") + $projectCommandArguments)
     }
     "verify" {
+        Invoke-ProjectCommand `
+            -WorkingDirectory $pythonProjectPath `
+            -Executable $pythonExecutable `
+            -Arguments @("scripts/check_dependency_lock.py")
+        Invoke-ProjectCommand `
+            -WorkingDirectory $pythonProjectPath `
+            -Executable $pythonExecutable `
+            -Arguments @("scripts/check_secrets.py")
         Invoke-ProjectCommand `
             -WorkingDirectory $pythonProjectPath `
             -Executable $pythonExecutable `

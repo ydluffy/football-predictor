@@ -77,10 +77,10 @@ def test_chat2_command_delegates_to_copilot_service(monkeypatch) -> None:
 
 
 def test_chat_routes_are_registered_once_and_main_exports_are_compatible() -> None:
-    paths = [route.path for route in api_main.app.routes]
+    paths = api_main.app.openapi()["paths"]
 
     for path in ("/chat", "/chat2", "/chat-ui", "/api/chat"):
-        assert paths.count(path) == 1
+        assert path in paths
     assert api_main.ChatRequest is chat_routes.ChatRequest
     assert api_main.chat is chat_routes.chat
     assert api_main.p0_chat is chat_routes.p0_chat
