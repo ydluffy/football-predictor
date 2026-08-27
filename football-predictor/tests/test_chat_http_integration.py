@@ -37,6 +37,22 @@ def test_chat_route_over_http(monkeypatch: Any) -> None:
 
     assert response.status_code == 200
     assert response.json() == {"content": "ok"}
+    assert response.headers["X-Request-ID"]
+    assert float(response.headers["X-Response-Time-Ms"]) >= 0.0
+
+
+def test_health_exposes_runtime_versions_and_request_metrics() -> None:
+    with TestClient(api_main.app) as client:
+        health = client.get("/health")
+        metrics = client.get("/metrics")
+
+    assert health.status_code == 200
+    payload = health.json()
+    assert payload["service"]["name"] == "football-predictor"
+    assert {"model_loaded", "model_version", "data_snapshot_version"} <= payload.keys()
+    assert {"requests_total", "server_error_rate", "latency_ms"} <= payload["requests"].keys()
+    assert metrics.status_code == 200
+    assert metrics.json()["requests_total"] >= 1
 
 
 def test_chat_client_config_validates_environment(monkeypatch: Any) -> None:

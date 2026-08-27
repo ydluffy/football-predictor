@@ -13,8 +13,8 @@ $pythonProjectPath = Join-Path $repositoryRoot "football-predictor"
 $webProjectPath = Join-Path $repositoryRoot "web"
 $pythonExecutable = Join-Path $pythonProjectPath ".venv\Scripts\python.exe"
 $projectCommandArguments = @($CommandArguments | Where-Object { $_ })
-$pythonLintTargets = @("src/api/routes", "src/api/services", "src/quality", "scripts/check_data_model_quality.py", "scripts/check_dependency_lock.py", "scripts/check_secrets.py", "tests/test_chat_routes.py", "tests/test_chat_http_integration.py", "tests/test_data_model_quality_gate.py", "tests/test_operations_routes.py", "tests/test_research_copilot_service.py")
-$pythonTypecheckTargets = @("src/api/services/chat_client.py", "src/api/routes/operations.py", "src/quality/data_model_gate.py", "scripts/check_data_model_quality.py", "scripts/check_dependency_lock.py", "scripts/check_secrets.py")
+$pythonLintTargets = @("src/api/observability.py", "src/api/routes", "src/api/services", "src/quality", "scripts/check_data_model_quality.py", "scripts/check_dependency_lock.py", "scripts/check_secrets.py", "tests/test_chat_routes.py", "tests/test_chat_http_integration.py", "tests/test_data_model_quality_gate.py", "tests/test_observability.py", "tests/test_operations_routes.py", "tests/test_research_copilot_service.py")
+$pythonTypecheckTargets = @("src/api/observability.py", "src/api/services/chat_client.py", "src/api/routes/operations.py", "src/quality/data_model_gate.py", "scripts/check_data_model_quality.py", "scripts/check_dependency_lock.py", "scripts/check_secrets.py")
 
 function Invoke-ProjectCommand {
     param(

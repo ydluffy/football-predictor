@@ -10,6 +10,7 @@ from enum import StrEnum
 from typing import Any
 from urllib import error, request
 
+from api.observability import get_request_id
 from utils.logger import get_logger
 
 _RETRYABLE_HTTP_STATUSES = frozenset({408, 429, 500, 502, 503, 504})
@@ -266,7 +267,7 @@ def call_openai_chat(
         return f"[mock] 我已收到你的问题：{last_user_message[:120]} ...", []
 
     config = ChatClientConfig.from_env()
-    request_id = uuid.uuid4().hex
+    request_id = get_request_id() or uuid.uuid4().hex
     logger = get_logger().bind(
         component="chat_client",
         provider=provider.name,

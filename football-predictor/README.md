@@ -408,7 +408,12 @@ uvicorn api.main:app --reload
 
 ```bash
 curl http://127.0.0.1:8000/health
+curl http://127.0.0.1:8000/health/live
+curl http://127.0.0.1:8000/health/ready
+curl http://127.0.0.1:8000/metrics
 ```
+
+所有响应会返回 `X-Request-ID` 和 `X-Response-Time-Ms`。完整的运行指标、模型/数据版本和探针语义见 `docs/observability.md`。
 
 预测示例：
 

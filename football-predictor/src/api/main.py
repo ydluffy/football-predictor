@@ -21,6 +21,12 @@ from api.routes.chat import (
     p0_chat,
     router as chat_router,
 )
+from api.observability import (
+    ObservabilityMiddleware,
+    RequestMetricsRegistry,
+    data_runtime_metadata,
+    model_runtime_metadata,
+)
 from api.routes.operations import RunExperimentRequest, build_operations_router
 from api.services.research_copilot import (
     _default_artifacts,
@@ -168,6 +174,7 @@ async def lifespan(_: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="football-predictor", version="0.1.0", lifespan=lifespan)
+request_metrics = RequestMetricsRegistry()
 
 _origins = os.getenv("CORS_ALLOW_ORIGINS") or "http://localhost:3000,http://127.0.0.1:3000"
 allow_origins = [o.strip() for o in _origins.split(",") if o.strip()]
@@ -177,7 +184,9 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Request-ID", "X-Response-Time-Ms"],
 )
+app.add_middleware(ObservabilityMiddleware, registry=request_metrics)
 
 
 app.include_router(sporttery_router)
@@ -204,17 +213,30 @@ def predict(match_id: str | None = None) -> PredictResponse:
     return PredictResponse(p_home=float(proba["p_home"]), p_draw=float(proba["p_draw"]), p_away=float(proba["p_away"]))
 
 
+def _runtime_status() -> dict[str, object]:
+    settings = get_settings()
+    model = model_runtime_metadata(_MODEL_PATH if _MODEL is not None else None)
+    data = data_runtime_metadata(settings.eval_data_model_quality_gate_path)
+    return {
+        "service": {"name": "football-predictor", "version": app.version},
+        "model_loaded": bool(model["loaded"]),
+        "model_path": model["path"],
+        "model_version": model["version"],
+        "data_snapshot_version": data["snapshot_version"],
+        "model": model,
+        "data": data,
+    }
+
+
 app.include_router(
     build_operations_router(
-        model_status=lambda: {
-            "model_loaded": _MODEL is not None,
-            "model_path": str(_MODEL_PATH) if _MODEL_PATH else None,
-        },
+        model_status=lambda: _runtime_status(),
         artifacts=_default_artifacts,
         analyze=analyze_latest_run,
         explain_high_brier=explain_high_brier,
         run_experiment=run_experiment,
         system_status=show_system_status,
+        runtime_metrics=request_metrics.snapshot,
     )
 )
 

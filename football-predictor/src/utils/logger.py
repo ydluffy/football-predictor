@@ -17,7 +17,14 @@ def configure_logger() -> None:
 
     logger.remove()
     logger.add(sys.stderr, level=level, backtrace=False, diagnose=False)
-    logger.add(str(log_path), level=level, rotation="10 MB", retention="10 days", enqueue=True)
+    logger.add(
+        str(log_path),
+        level=level,
+        rotation="10 MB",
+        retention="10 days",
+        enqueue=True,
+        serialize=True,
+    )
 
 
 def get_logger():
