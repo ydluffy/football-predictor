@@ -53,6 +53,27 @@ pip install -e .
 python scripts/run_train.py
 ```
 
+## 数据与模型质量门
+
+生产预测或模型晋级前运行统一质量门：
+
+```bash
+python scripts/check_data_model_quality.py \
+  --dataset path/to/current_scoring_snapshot.csv \
+  --reference path/to/approved_reference.csv \
+  --metrics artifacts/eval/model_compare.csv
+```
+
+门禁策略位于 `config/data_model_quality_gate.json`，当前阻断条件包括：
+
+- 最新 `snapshot_at` 数据快照超过 36 小时（不使用比赛日期代替抓取时间）；
+- 必填字段整体缺失率超过 2%，或任一字段超过 5%；
+- 三项欧赔同时有效（数值且大于 1.0）的覆盖率低于 95%；
+- 指定特征 PSI 超过 0.1 时记为漂移；任一特征超过 0.25，或漂移特征比例超过 20%；
+- 校准 Brier、可靠性差距、校准退化量或评估样本数不满足阈值。
+
+报告默认写入 `artifacts/eval/data_model_quality_gate.json`。状态为 `fail` 时退出码为 1，输入或配置不可用时退出码为 2，因此可以直接用于发布、模型晋级和调度任务的前置阻断。`--metrics` 支持 JSON，或带 `run_time` 的 CSV；CSV 会选择时间最新的一行。参考数据必须是已审核且与生产特征定义一致的稳定窗口，不要在每次运行时用当前批次覆盖它。
+
 示例：
 
 - 使用 mock（默认 sample）数据训练：

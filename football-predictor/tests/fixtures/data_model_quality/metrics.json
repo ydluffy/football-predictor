@@ -1,0 +1,7 @@
+{
+  "run_time": "2026-08-26T22:00:00Z",
+  "n_samples": 120,
+  "brier_raw": 0.51,
+  "brier_calibrated": 0.48,
+  "reliability_gap_mean": 0.08
+}

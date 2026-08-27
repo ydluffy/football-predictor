@@ -45,10 +45,13 @@ jobs:
         run: python -m pip_audit --requirement requirements.txt --no-deps --disable-pip --progress-spinner off
 
       - name: Lint Python
-        run: python -m ruff check src/api/routes src/api/services scripts/check_dependency_lock.py scripts/check_secrets.py tests/test_chat_routes.py tests/test_chat_http_integration.py tests/test_operations_routes.py tests/test_research_copilot_service.py
+        run: python -m ruff check src/api/routes src/api/services src/quality scripts/check_data_model_quality.py scripts/check_dependency_lock.py scripts/check_secrets.py tests/test_chat_routes.py tests/test_chat_http_integration.py tests/test_data_model_quality_gate.py tests/test_operations_routes.py tests/test_research_copilot_service.py
 
       - name: Type-check Python
-        run: python -m mypy --explicit-package-bases src/api/services/chat_client.py src/api/routes/operations.py scripts/check_dependency_lock.py scripts/check_secrets.py
+        run: python -m mypy --explicit-package-bases src/api/services/chat_client.py src/api/routes/operations.py src/quality/data_model_gate.py scripts/check_data_model_quality.py scripts/check_dependency_lock.py scripts/check_secrets.py
+
+      - name: Validate data and model quality policy
+        run: python scripts/check_data_model_quality.py --dataset tests/fixtures/data_model_quality/current.csv --reference tests/fixtures/data_model_quality/reference.csv --metrics tests/fixtures/data_model_quality/metrics.json --as-of 2026-08-27T00:00:00Z --output _tmp/ci-data-model-quality.json
 
       - name: Run tests
         run: python -m pytest -q --basetemp _tmp/ci-pytest

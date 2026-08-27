@@ -29,6 +29,7 @@ From the repository root:
 .\scripts\project.ps1 test
 .\scripts\project.ps1 train --model-type logit --feature-version v3
 .\scripts\project.ps1 api
+.\scripts\project.ps1 data-model-quality --dataset path/to/current_scoring_snapshot.csv --reference path/to/approved_reference.csv --metrics artifacts/eval/model_compare.csv
 .\scripts\project.ps1 python-lock
 .\scripts\project.ps1 python-lock-check
 .\scripts\project.ps1 python-lint
