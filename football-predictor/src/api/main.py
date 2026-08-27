@@ -24,7 +24,27 @@ from api.routes.p0 import p0_ingest_football_data
 from api.routes.p0 import p0_list_fixtures
 from api.routes.p0 import p0_predict
 from api.routes.p0 import router as p0_router
-from api.views import CHAT_UI_HTML, SPORTTTERY_EDITOR_HTML
+from api.routes.sporttery import (
+    SportteryMarketRow,
+    SportteryMarketsResponse,
+    SportteryMarketSaveRequest,
+    SportteryMarketSaveResponse,
+    SportteryMarketSaveRow,
+    SportteryPasteParseRequest,
+    SportteryPasteParseResponse,
+    _project_root,
+    _raw_sporttery_file,
+    _sporttery_market_history_path,
+    _sporttery_market_path,
+    _sporttery_rows_to_frame,
+    _sporttery_template_rows,
+    parse_world_cup_sporttery_paste,
+    router as sporttery_router,
+    save_world_cup_sporttery_handicap_markets,
+    world_cup_sporttery_editor,
+    world_cup_sporttery_handicap_markets,
+)
+from api.views import CHAT_UI_HTML
 from config.settings import ensure_project_dirs, get_settings
 from features.basic_features import build_basic_features
 from ingest.load_data import load_matches
@@ -36,11 +56,6 @@ from p0.db import connect as p0_db_connect
 from p0.db import get_db_path as p0_get_db_path
 from p0.db import init_db as p0_init_db
 from p0.db import select_fixtures_by_date as p0_select_fixtures_by_date
-from world_cup.sporttery_markets import append_sporttery_market_history
-from world_cup.sporttery_markets import build_sporttery_template_from_fixtures
-from world_cup.sporttery_markets import load_sporttery_handicap_markets
-from world_cup.sporttery_markets import parse_sporttery_paste_text
-from world_cup.sporttery_markets import parse_home_handicap
 
 
 def _load_dotenv_if_present(path: Path) -> None:
@@ -88,67 +103,6 @@ class ChatResponse(BaseModel):
     content: str
 
 
-class SportteryMarketRow(BaseModel):
-    date: str
-    match_id: str
-    match_number: str
-    home_team: str
-    away_team: str
-    home_handicap_raw: str
-    home_handicap: float | None
-    is_filled: bool
-    source: str
-    updated_at: str
-    notes: str
-
-
-class SportteryMarketsResponse(BaseModel):
-    date: str
-    path: str
-    exists: bool
-    count: int
-    filled_count: int
-    rows: list[SportteryMarketRow]
-
-
-class SportteryMarketSaveRow(BaseModel):
-    date: str
-    match_id: str = ""
-    match_number: str = ""
-    home_team: str
-    away_team: str
-    home_handicap: str = ""
-    source: str = "sporttery_manual"
-    updated_at: str = ""
-    notes: str = ""
-
-
-class SportteryMarketSaveRequest(BaseModel):
-    date: str
-    rows: list[SportteryMarketSaveRow]
-    snapshot_type: str = "latest"
-    captured_at: str = ""
-
-
-class SportteryMarketSaveResponse(BaseModel):
-    ok: bool
-    date: str
-    path: str
-    history_path: str
-    count: int
-    filled_count: int
-    history_count: int
-
-
-class SportteryPasteParseRequest(BaseModel):
-    text: str
-
-
-class SportteryPasteParseResponse(BaseModel):
-    count: int
-    rows: list[dict[str, str]]
-
-
 _MODEL: Any | None = None
 _MODEL_PATH: Path | None = None
 
@@ -178,78 +132,6 @@ def _load_or_train_model() -> tuple[BaselineLogitModel, Path]:
     model = BaselineLogitModel().train(X, y)
     saved = model.save(model_path)
     return model, saved
-
-
-def _project_root() -> Path:
-    return Path(__file__).resolve().parents[2]
-
-
-def _sporttery_market_path(run_date: str) -> Path:
-    return _project_root() / "data" / "manual" / f"sporttery_handicap_markets_{run_date}.csv"
-
-
-def _sporttery_market_history_path() -> Path:
-    return _project_root() / "data" / "manual" / "sporttery_handicap_market_history.csv"
-
-
-def _sporttery_template_rows(run_date: str) -> pd.DataFrame:
-    fixtures_path = (
-        _project_root()
-        / "data"
-        / "player_level"
-        / "espn_world_cup_2026"
-        / "fixtures.csv"
-    )
-    fixtures = pd.read_csv(fixtures_path)
-    return build_sporttery_template_from_fixtures(fixtures, as_of_date=run_date)
-
-
-def _raw_sporttery_file(path: Path, run_date: str) -> tuple[pd.DataFrame, bool]:
-    if path.exists():
-        return pd.read_csv(path).fillna(""), True
-    return _sporttery_template_rows(run_date).fillna(""), False
-
-
-def _sporttery_rows_to_frame(
-    rows: list[SportteryMarketSaveRow],
-    *,
-    run_date: str,
-) -> pd.DataFrame:
-    records = []
-    for row in rows:
-        row_date = str(pd.Timestamp(row.date).date())
-        if row_date != run_date:
-            raise ValueError(f"row date {row_date} does not match request date {run_date}")
-        handicap = row.home_handicap.strip()
-        if handicap:
-            parse_home_handicap(handicap)
-        records.append(
-            {
-                "date": row_date,
-                "match_id": row.match_id.strip(),
-                "match_number": row.match_number.strip(),
-                "home_team": row.home_team.strip(),
-                "away_team": row.away_team.strip(),
-                "home_handicap": handicap,
-                "source": row.source.strip() or "sporttery_manual",
-                "updated_at": row.updated_at.strip(),
-                "notes": row.notes.strip(),
-            }
-        )
-    return pd.DataFrame(
-        records,
-        columns=[
-            "date",
-            "match_id",
-            "match_number",
-            "home_team",
-            "away_team",
-            "home_handicap",
-            "source",
-            "updated_at",
-            "notes",
-        ],
-    )
 
 
 @asynccontextmanager
@@ -288,111 +170,7 @@ app.add_middleware(
 )
 
 
-@app.get(
-    "/world-cup/sporttery/handicap-markets",
-    response_model=SportteryMarketsResponse,
-)
-def world_cup_sporttery_handicap_markets(date: str) -> SportteryMarketsResponse:
-    run_date = str(pd.Timestamp(date).date())
-    path = _sporttery_market_path(run_date)
-    raw, exists = _raw_sporttery_file(path, run_date)
-    parsed_by_key: dict[tuple[str, str, str], dict[str, object]] = {}
-    if exists:
-        try:
-            parsed = load_sporttery_handicap_markets(path)
-        except Exception as exc:
-            raise HTTPException(status_code=400, detail=str(exc)) from exc
-        parsed_by_key = {
-            (str(row["date"]), str(row["home_team"]), str(row["away_team"])): row.to_dict()
-            for _, row in parsed.iterrows()
-        }
-
-    rows: list[SportteryMarketRow] = []
-    for _, row in raw.iterrows():
-        raw_handicap = str(row.get("home_handicap", "") or "").strip()
-        key = (
-            str(pd.Timestamp(row["date"]).date()),
-            str(row.get("home_team", "")),
-            str(row.get("away_team", "")),
-        )
-        parsed_row = parsed_by_key.get(key, {})
-        rows.append(
-            SportteryMarketRow(
-                date=key[0],
-                match_id=str(row.get("match_id", "") or ""),
-                match_number=str(row.get("match_number", "") or ""),
-                home_team=key[1],
-                away_team=key[2],
-                home_handicap_raw=raw_handicap,
-                home_handicap=(
-                    float(parsed_row["home_handicap"])
-                    if "home_handicap" in parsed_row and raw_handicap
-                    else None
-                ),
-                is_filled=bool(raw_handicap),
-                source=str(row.get("source", "") or ""),
-                updated_at=str(row.get("updated_at", "") or ""),
-                notes=str(row.get("notes", "") or ""),
-            )
-        )
-    filled_count = sum(1 for row in rows if row.is_filled)
-    return SportteryMarketsResponse(
-        date=run_date,
-        path=str(path),
-        exists=exists,
-        count=len(rows),
-        filled_count=filled_count,
-        rows=rows,
-    )
-
-
-@app.post(
-    "/world-cup/sporttery/handicap-markets",
-    response_model=SportteryMarketSaveResponse,
-)
-def save_world_cup_sporttery_handicap_markets(
-    request: SportteryMarketSaveRequest,
-) -> SportteryMarketSaveResponse:
-    run_date = str(pd.Timestamp(request.date).date())
-    try:
-        frame = _sporttery_rows_to_frame(request.rows, run_date=run_date)
-    except Exception as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    path = _sporttery_market_path(run_date)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    frame.to_csv(path, index=False, encoding="utf-8-sig")
-    history = append_sporttery_market_history(
-        _sporttery_market_history_path(),
-        frame,
-        snapshot_type=request.snapshot_type.strip() or "latest",
-        captured_at=request.captured_at.strip(),
-    )
-    filled_count = int(frame["home_handicap"].astype(str).str.strip().ne("").sum())
-    return SportteryMarketSaveResponse(
-        ok=True,
-        date=run_date,
-        path=str(path),
-        history_path=str(_sporttery_market_history_path()),
-        count=int(len(frame)),
-        filled_count=filled_count,
-        history_count=int(len(history)),
-    )
-
-
-@app.post(
-    "/world-cup/sporttery/parse-paste",
-    response_model=SportteryPasteParseResponse,
-)
-def parse_world_cup_sporttery_paste(
-    request: SportteryPasteParseRequest,
-) -> SportteryPasteParseResponse:
-    rows = parse_sporttery_paste_text(request.text)
-    return SportteryPasteParseResponse(count=len(rows), rows=rows)
-
-
-@app.get("/world-cup/sporttery/editor", response_class=HTMLResponse)
-def world_cup_sporttery_editor() -> HTMLResponse:
-    return HTMLResponse(content=SPORTTTERY_EDITOR_HTML)
+app.include_router(sporttery_router)
 
 
 @app.get("/predict", response_model=PredictResponse)

@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from api import main as api_main
+from api.routes import sporttery as sporttery_routes
 
 
 def test_sporttery_handicap_market_api_returns_template_when_file_missing(
@@ -23,8 +24,8 @@ def test_sporttery_handicap_market_api_returns_template_when_file_missing(
         ]
     )
 
-    monkeypatch.setattr(api_main, "_sporttery_market_path", lambda run_date: market_path)
-    monkeypatch.setattr(api_main, "_sporttery_template_rows", lambda run_date: fixtures.assign(
+    monkeypatch.setattr(sporttery_routes, "_sporttery_market_path", lambda run_date: market_path)
+    monkeypatch.setattr(sporttery_routes, "_sporttery_template_rows", lambda run_date: fixtures.assign(
         match_number="",
         home_handicap="",
         source="sporttery_manual",
@@ -68,7 +69,7 @@ def test_sporttery_handicap_market_api_parses_filled_file(monkeypatch, tmp_path)
         ]
     ).to_csv(market_path, index=False)
 
-    monkeypatch.setattr(api_main, "_sporttery_market_path", lambda run_date: market_path)
+    monkeypatch.setattr(sporttery_routes, "_sporttery_market_path", lambda run_date: market_path)
     response = api_main.world_cup_sporttery_handicap_markets("2026-06-25")
 
     assert response.exists is True
@@ -80,8 +81,8 @@ def test_sporttery_handicap_market_api_parses_filled_file(monkeypatch, tmp_path)
 def test_sporttery_handicap_market_api_saves_csv(monkeypatch, tmp_path):
     market_path = tmp_path / "sporttery.csv"
     history_path = tmp_path / "history.csv"
-    monkeypatch.setattr(api_main, "_sporttery_market_path", lambda run_date: market_path)
-    monkeypatch.setattr(api_main, "_sporttery_market_history_path", lambda: history_path)
+    monkeypatch.setattr(sporttery_routes, "_sporttery_market_path", lambda run_date: market_path)
+    monkeypatch.setattr(sporttery_routes, "_sporttery_market_history_path", lambda: history_path)
 
     response = api_main.save_world_cup_sporttery_handicap_markets(
         api_main.SportteryMarketSaveRequest(
@@ -118,8 +119,8 @@ def test_sporttery_handicap_market_api_saves_csv(monkeypatch, tmp_path):
 def test_sporttery_handicap_market_api_rejects_bad_handicap(monkeypatch, tmp_path):
     market_path = tmp_path / "sporttery.csv"
     history_path = tmp_path / "history.csv"
-    monkeypatch.setattr(api_main, "_sporttery_market_path", lambda run_date: market_path)
-    monkeypatch.setattr(api_main, "_sporttery_market_history_path", lambda: history_path)
+    monkeypatch.setattr(sporttery_routes, "_sporttery_market_path", lambda run_date: market_path)
+    monkeypatch.setattr(sporttery_routes, "_sporttery_market_history_path", lambda: history_path)
 
     with pytest.raises(HTTPException):
         api_main.save_world_cup_sporttery_handicap_markets(
@@ -147,3 +148,15 @@ def test_sporttery_paste_parse_api():
     assert response.count == 2
     assert response.rows[0]["match_number"] == "周四001"
     assert response.rows[0]["home_handicap"] == "主队让1球"
+
+
+def test_sporttery_router_is_registered_once_and_main_exports_are_compatible():
+    paths = [route.path for route in api_main.app.routes]
+    assert paths.count("/world-cup/sporttery/handicap-markets") == 2
+    assert paths.count("/world-cup/sporttery/parse-paste") == 1
+    assert paths.count("/world-cup/sporttery/editor") == 1
+    assert api_main.SportteryMarketSaveRequest is sporttery_routes.SportteryMarketSaveRequest
+    assert (
+        api_main.world_cup_sporttery_handicap_markets
+        is sporttery_routes.world_cup_sporttery_handicap_markets
+    )

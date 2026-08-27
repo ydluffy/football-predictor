@@ -51,6 +51,8 @@ Router factories receive cross-cutting service dependencies explicitly; domain
 routers may depend directly on the domain package they exclusively expose.
 Dependency-free server-rendered tools live in `football-predictor/src/api/views.py`;
 `main.py` only binds those view constants to HTTP endpoints.
+World Cup sporttery market schemas, CSV persistence, paste parsing, and routes
+are owned by `football-predictor/src/api/routes/sporttery.py`.
 
 ## Local verification
 

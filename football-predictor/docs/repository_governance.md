@@ -59,6 +59,9 @@ in `src/api/main.py`, and place cohesive endpoint groups in `src/api/routes`.
 Cross-cutting router modules receive service callables explicitly. A domain
 router may depend directly on the domain package it exclusively exposes, as the
 P0 fixture and prediction routes do, but must have isolated integration tests.
+The sporttery router likewise owns its request models, CSV boundary, parsing,
+editor endpoint, and route-specific path resolution; `main.py` only registers
+the router and re-exports compatibility symbols.
 
 Pytest treats deprecations, future warnings, and ambiguous date parsing warnings
 as errors. Resolve a warning at its source instead of suppressing it in a test.
