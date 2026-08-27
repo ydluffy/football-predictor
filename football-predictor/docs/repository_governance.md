@@ -3,6 +3,14 @@
 This repository keeps reproducible implementation assets in Git and keeps
 mutable operational data outside Git.
 
+## Canonical project layout
+
+`football-predictor/` is the only installable Python project. The repository
+root intentionally has no `pyproject.toml`, Python `src/`, or Python `tests/`
+tree. Use `scripts/project.ps1` from the repository root or run commands from
+inside `football-predictor/`. The root-level prototype was retired after its
+sample dataset was moved to `football-predictor/data/templates`.
+
 ## Tracked in Git
 
 - Python and TypeScript source code.

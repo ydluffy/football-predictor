@@ -1,6 +1,7 @@
 # Ball Match Prediction System
 
-This repository contains two cooperating applications:
+This repository contains two cooperating applications with one canonical
+Python project:
 
 - `football-predictor/`: the canonical Python data, research, backtest, model,
   and shadow-strategy project.
@@ -14,6 +15,23 @@ validators, configuration, tests, and documentation are versioned.
 See
 [`football-predictor/docs/repository_governance.md`](football-predictor/docs/repository_governance.md)
 for repository boundaries and commit conventions.
+
+The repository root is not an installable Python package. Run Python commands
+from `football-predictor/`, or use the root command wrapper below. This avoids
+accidentally importing the retired prototype that previously lived under the
+root `src/` directory.
+
+## Unified commands
+
+From the repository root:
+
+```powershell
+.\scripts\project.ps1 test
+.\scripts\project.ps1 train --model-type logit --feature-version v3
+.\scripts\project.ps1 api
+.\scripts\project.ps1 web-lint
+.\scripts\project.ps1 web-build
+```
 
 ## Local verification
 

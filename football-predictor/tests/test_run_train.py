@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 
 from config.settings import get_settings
 
 
-def _load_run_train_main():
+def _load_run_train_module():
     root = __file__
-    from pathlib import Path
 
     script_path = Path(root).resolve().parents[1] / "scripts" / "run_train.py"
     spec = importlib.util.spec_from_file_location("run_train_script", str(script_path))
@@ -17,7 +19,26 @@ def _load_run_train_main():
         raise RuntimeError("无法加载 scripts/run_train.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.main
+    return module
+
+
+def _load_run_train_main():
+    return _load_run_train_module().main
+
+
+def test_default_data_path_falls_back_to_versioned_template(tmp_path):
+    module = _load_run_train_module()
+    project_root = tmp_path / "football-predictor"
+    raw_dir = project_root / "data" / "raw"
+    template = project_root / "data" / "templates" / "sample_matches.csv"
+    template.parent.mkdir(parents=True)
+    template.write_text("match_id,actual_result\nm1,H\n", encoding="utf-8")
+
+    settings = SimpleNamespace(data_raw_dir=raw_dir, project_root=project_root)
+
+    resolved = module._resolve_data_path(settings=settings, explicit_path="")
+
+    assert Path(resolved) == template
 
 
 def test_run_train_cv_true_stacking_oof_explicitly_raises(monkeypatch):

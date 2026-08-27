@@ -214,7 +214,7 @@ def _resolve_data_path(path: str, settings) -> str:
         load_matches(path)
         return path
     except FileNotFoundError:
-        fallback = settings.project_root.parent / "data" / "sample_matches.csv"
+        fallback = settings.project_root / "data" / "templates" / "sample_matches.csv"
         if fallback.exists():
             return str(fallback)
         raise
