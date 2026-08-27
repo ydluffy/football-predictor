@@ -2,16 +2,14 @@ from __future__ import annotations
 
 import json
 import os
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Literal
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-from api.routes.p0 import P0PredictionsRequest
-from api.routes.p0 import p0_ingest_football_data
-from api.routes.p0 import p0_predict
+from api.routes.p0 import P0PredictionsRequest, p0_ingest_football_data, p0_predict
 from api.services.chat_client import call_openai_chat as _call_openai_chat
 from api.services.research_copilot import (
     _format_backtest_message,
@@ -154,7 +152,7 @@ def chat(req: ChatRequest) -> ChatResponse:
         import json
         try:
             args = json.loads(tool_call.get("function", {}).get("arguments", "{}"))
-        except Exception:
+        except (json.JSONDecodeError, TypeError):
             args = {}
 
         tool_result = ""
@@ -239,7 +237,7 @@ def p0_chat(req: ChatRequest) -> ChatResponse:
             last_user = (m.content or "").strip()
             break
 
-    today_utc = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    today_utc = datetime.now(UTC).strftime("%Y-%m-%d")
 
     def _extract_date(text: str) -> str | None:
         import re
@@ -404,7 +402,7 @@ def p0_chat(req: ChatRequest) -> ChatResponse:
     import json
     try:
         args = json.loads(tool_call.get("function", {}).get("arguments", "{}"))
-    except Exception:
+    except (json.JSONDecodeError, TypeError):
         args = {}
 
     tool_result = ""

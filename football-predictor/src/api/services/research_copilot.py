@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -163,7 +163,7 @@ def run_experiment(command_text: str) -> dict[str, object]:
         "use_verifier": False,
     }
     if cfg["data_mode"] == "real":
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
         s = get_settings()
         schedule_path = s.project_root / "data" / "raw" / "schedules" / f"schedule_{today}.csv"
         if schedule_path.exists():
@@ -321,7 +321,7 @@ def _format_today_matches_message() -> str:
 
     try:
         client = FootballDataClient()
-        today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+        today = datetime.now(UTC).strftime("%Y-%m-%d")
         df = client.fetch_today_matches(today)
 
         if (

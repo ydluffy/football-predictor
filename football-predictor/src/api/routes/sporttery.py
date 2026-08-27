@@ -8,11 +8,13 @@ from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
 from api.views import SPORTTTERY_EDITOR_HTML
-from world_cup.sporttery_markets import append_sporttery_market_history
-from world_cup.sporttery_markets import build_sporttery_template_from_fixtures
-from world_cup.sporttery_markets import load_sporttery_handicap_markets
-from world_cup.sporttery_markets import parse_home_handicap
-from world_cup.sporttery_markets import parse_sporttery_paste_text
+from world_cup.sporttery_markets import (
+    append_sporttery_market_history,
+    build_sporttery_template_from_fixtures,
+    load_sporttery_handicap_markets,
+    parse_home_handicap,
+    parse_sporttery_paste_text,
+)
 
 
 class SportteryMarketRow(BaseModel):

@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   python:
-    name: Python tests
+    name: Python quality gate
     runs-on: ubuntu-latest
     defaults:
       run:
@@ -34,6 +34,12 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           python -m pip install -e ".[dev]"
+
+      - name: Lint Python
+        run: python -m ruff check src/api/routes src/api/services tests/test_chat_routes.py tests/test_chat_http_integration.py tests/test_operations_routes.py tests/test_research_copilot_service.py
+
+      - name: Type-check Python
+        run: python -m mypy --explicit-package-bases src/api/services/chat_client.py src/api/routes/operations.py
 
       - name: Run tests
         run: python -m pytest -q --basetemp _tmp/ci-pytest

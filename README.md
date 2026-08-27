@@ -29,6 +29,8 @@ From the repository root:
 .\scripts\project.ps1 test
 .\scripts\project.ps1 train --model-type logit --feature-version v3
 .\scripts\project.ps1 api
+.\scripts\project.ps1 python-lint
+.\scripts\project.ps1 python-typecheck
 .\scripts\project.ps1 web-lint
 .\scripts\project.ps1 web-typecheck
 .\scripts\project.ps1 web-build
@@ -39,9 +41,10 @@ From the repository root:
 
 GitHub Actions runs two independent jobs on pushes and pull requests:
 
-- Python 3.12: install `football-predictor[dev]` and run the complete pytest suite.
-  Deprecation warnings, future warnings, and ambiguous date parsing warnings are
-  treated as test failures.
+- Python 3.12: install `football-predictor[dev]`, run Ruff over the governed API
+  boundary, run mypy over the typed transport/operations boundary, and run the
+  complete pytest suite. Deprecation warnings, future warnings, and ambiguous
+  date parsing warnings are treated as test failures.
 - Node.js 22: install from `package-lock.json`, then run ESLint, TypeScript
   checking, and the optimized Next.js production build.
 
@@ -57,6 +60,12 @@ Research artifact analysis, experiment command parsing, status summaries, and
 natural-language dispatch live in `football-predictor/src/api/services/`.
 The OpenAI-compatible transport is isolated in `api/services/chat_client.py`;
 all chat schemas and HTTP orchestration live in `api/routes/chat.py`.
+Its timeout and bounded retry policy can be configured with
+`CHAT_HTTP_TIMEOUT_SECONDS` (default `60`), `CHAT_HTTP_MAX_RETRIES` (default
+`2`), and `CHAT_HTTP_RETRY_BACKOFF_SECONDS` (default `0.25`). Retries apply only
+to temporary network, timeout, rate-limit, and upstream failures. Transport
+errors expose stable error codes and emit structured Loguru context without
+credentials.
 
 ## Local verification
 

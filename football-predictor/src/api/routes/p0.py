@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from fastapi import APIRouter, HTTPException
@@ -13,10 +13,7 @@ from p0.db import select_fixtures_by_date as p0_select_fixtures_by_date
 from p0.db import select_recent_finished_matches as p0_select_recent_finished_matches
 from p0.db import upsert_fixtures as p0_upsert_fixtures
 from p0.football_data_org import fetch_major_league_matches
-from p0.poisson import compute_lambdas
-from p0.poisson import compute_team_averages
-from p0.poisson import confidence_from_probs
-from p0.poisson import predict_1x2
+from p0.poisson import compute_lambdas, compute_team_averages, confidence_from_probs, predict_1x2
 
 
 class P0Fixture(BaseModel):
@@ -72,7 +69,7 @@ router = APIRouter()
 
 
 def _utc_date() -> str:
-    return datetime.now(timezone.utc).date().isoformat()
+    return datetime.now(UTC).date().isoformat()
 
 
 @router.post("/api/ingest/football-data", response_model=P0IngestResponse)
