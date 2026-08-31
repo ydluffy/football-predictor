@@ -19,7 +19,7 @@ The Odds API 用来补充多博彩公司市场数据，主要覆盖：
 推荐通过环境变量传入 key，避免把密钥写入项目文件：
 
 ```powershell
-$env:THE_ODDS_API_KEY="你的 API key"
+$env:THE_ODDS_API_KEY="你的 API key"  # pragma: allowlist secret
 .\.venv\Scripts\python.exe scripts\import_the_odds_api_world_cup.py `
   --sport-key soccer_fifa_world_cup `
   --regions eu,uk,us,au `
