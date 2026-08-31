@@ -11,11 +11,11 @@
     "verify": "npm run lint && npm run typecheck && npm run build"
   },
   "dependencies": {
-    "@supabase/supabase-js": "^2.103.0",
+    "@supabase/supabase-js": "^2.112.4",
     "next": "16.3.3",
-    "react": "19.2.4",
-    "react-dom": "19.2.4",
-    "zod": "^4.3.6"
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
+    "zod": "^4.5.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
