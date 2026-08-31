@@ -10,6 +10,7 @@ from strategy.sporttery_sales_window import (
     build_scan_result,
     group_on_sale_fixtures,
     parse_china_datetime,
+    retryable_tasks,
     upsert_registry_tasks,
 )
 
@@ -165,6 +166,33 @@ def test_scheduler_failure_stays_in_retry_queue():
     assert registry["tasks"][0]["status"] == "failed"
     assert retry_queue[0]["key"] == key
     assert retry_queue[0]["last_error"] == "scheduler unavailable"
+
+
+def test_retry_queue_excludes_task_after_hard_lock():
+    registry = {
+        "tasks": [
+            {
+                "key": "expired",
+                "status": "failed",
+                "run_at": "2026-08-28T21:00:00+08:00",
+                "hard_lock": "2026-08-28T21:45:00+08:00",
+                "sales_cutoff": "2026-08-28T22:00:00+08:00",
+            },
+            {
+                "key": "still-safe",
+                "status": "pending_schedule",
+                "run_at": "2026-08-29T10:00:00+08:00",
+                "hard_lock": "2026-08-29T10:45:00+08:00",
+            },
+        ]
+    }
+
+    queue = retryable_tasks(
+        registry,
+        as_of=parse_china_datetime("2026-08-29T01:30:00+08:00"),
+    )
+
+    assert [task["key"] for task in queue] == ["still-safe"]
 
 
 def test_overnight_group_is_moved_before_weekday_sales_cutoff():

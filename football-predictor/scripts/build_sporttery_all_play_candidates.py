@@ -233,15 +233,21 @@ def main() -> None:
     audit_output.parent.mkdir(parents=True, exist_ok=True)
     base_frame.to_csv(base_output, index=False, encoding="utf-8-sig")
     play_frame.to_csv(play_output, index=False, encoding="utf-8-sig")
+    fixed_shadow_frame = base_frame[base_frame["plan_type"].astype(str).eq("固定赔率观察")].copy() if not base_frame.empty else base_frame
+    production_frame = base_frame[~base_frame["plan_type"].astype(str).eq("固定赔率观察")].copy() if not base_frame.empty else base_frame
 
     lines = [
         "# 体彩全玩法候选方案",
         "",
         "说明：胜平负/让球方案可进入当前自动复盘账本；总进球、比分、半全场已抓到赔率，但需要拆注复盘器完整支持后再纳入ROI账本。",
         "",
-        "## 胜平负/让球基础方案",
+        "## 胜平负/让球生产候选",
         "",
-        _markdown_table(base_frame[["plan_type", "title", "stake", "bet_count", "total_stake", "estimated_payout_min", "estimated_payout_max", "selections"]]) if not base_frame.empty else "暂无。",
+        _markdown_table(production_frame[["plan_type", "title", "stake", "bet_count", "total_stake", "estimated_payout_min", "estimated_payout_max", "selections"]]) if not production_frame.empty else "暂无。",
+        "",
+        "## 固定赔率影子方案（不入账）",
+        "",
+        _markdown_table(fixed_shadow_frame[["plan_type", "title", "total_stake", "estimated_odds_min", "estimated_payout_min", "selections", "risk_notes"]]) if not fixed_shadow_frame.empty else "本次没有总赔率落在6.00–10.00的低风险组合。",
         "",
         "## 总进球/比分/半全场候选",
         "",
@@ -252,6 +258,7 @@ def main() -> None:
         "- 同一场比赛的不同玩法不能放进同一张混合过关方案。",
         "- 每个方案预算按100元以内控制，按2元基础注和整数倍计算。",
         "- 所有足球玩法均按90分钟含伤停补时结算。",
+        "- 固定赔率影子方案采用2元虚拟注，必须随回复展示，但不得写入真实投注台账。",
     ]
     report_output.write_text("\n".join(lines), encoding="utf-8")
 

@@ -10,12 +10,14 @@
 
 - 当月所有预扫描、开售确认、动态终版、复盘和月度回顾都回复到同一个总控对话。
 - 项目文件和任务注册表是唯一长期状态；聊天记录仅作为当月控制面，不得成为唯一数据来源。
-- 控制器自动化 ID 固定为 `automation-2`。每次运行结束必须从注册表计算下一次最早任务，并更新自身的下一次唤醒时间，不得创建新的 cron 对话。
+- 控制器自动化 ID 以 `artifacts/data/football_automation_controller_state.json` 的 `controller_automation_id` 为准，不得在文档或脚本中写死。每次运行结束必须从注册表计算下一次最早任务，并更新该控制器自身的下一次唤醒时间，不得创建新的 cron 对话。
 - 动态终版任务只写入 `sporttery_task_registry_YYYY-MM-DD.json`，由控制器依次执行；不再为每个时间组创建独立 Codex 自动化。
 - 自身重排失败时写入 `artifacts/data/football_automation_controller_state.json` 的 `pending_reschedule`，保留旧的暂停任务作为人工恢复模板，不得谎报已安排。
 - 月度滚动成功前不得归档旧总控；新总控创建、控制器迁移和交接文件三项都成功后，才归档上月对话。
 
 控制器阶段顺序为：`10:00 预扫描 → 11:05 开售确认 → 13:00 复盘 → 注册表中最早终版 → 工作日 21:00/周末 22:00 兜底 → 次日 10:00`。复盘只结算前一销售日既有方案，不得生成新的赛前投注方案；已过期任务只留档，不得补写投注方案。
+
+当日存在 `artifacts/data/sporttery_daily_schedule_override_YYYY-MM-DD.json` 时，13:00 复盘之后的当日阶段改为按该文件及注册表 `run_at` 顺序执行，允许包含“早期基线分析”和“正式预测和投注方案”两类任务。早期基线只冻结官方赔率、可用外盘和分析基准，禁止生成或写入真实投注方案；正式阶段必须重新抓取、与对应基线比较并继续遵守官方在售、时效、硬锁、玩法覆盖、额度和重复入账闸门。用户给出的目标场次数与官方确认数不一致时，必须记录差异，只处理官方确认或后续刷新新增的在售比赛，不得补造场次。
 
 ## 项目文件衔接规则
 
@@ -34,6 +36,7 @@
 - `data/manual/external_market_snapshot_history.csv`
 - `data/manual/shadow_prediction_ledger_v2.csv`
 - `data/manual/shadow_portfolio_ledger_v2.csv`
+- `data/manual/fixed_odds_shadow_ledger.csv`
 - `data/manual/betting_plan_ledger.csv`
 - `artifacts/betting/betting_ledger_audit_latest.json`
 - `artifacts/data/competition_coverage_audit_latest.json`
@@ -114,6 +117,12 @@ The Odds API 的确认快照保存到 `data/external/the_odds_api_sporttery/snap
 
 纯市场概率、三串及以上、赔率超限或缺少独立模型概率时，组合层仍可输出0方案，但预测层必须保留记录。虚拟本金不是实际投注授权，两个影子台账均不得复制到 `betting_plan_ledger.csv`。
 
+终版候选同时生成一个目标总赔率 `8.00`、允许区间 `[6.00, 10.00]`（含上下限）、最多四腿的“固定赔率观察”方案。它只能从低风险方向选择；同样落入区间时先选择腿数更少的组合，同腿数再选择最接近 `8.00` 的组合。找不到区间内组合时必须输出空方案，不得用区间外赔率凑数。该方案仅用于独立统计命中率、ROI和最大回撤，不占用稳健/价值方案预算，不得自动写入真实投注台账；至少累计50个已结算前瞻样本后再评估是否调整区间，100个样本前不得进入生产投注规则。
+
+固定赔率观察方案只允许在终版运行后调用 `scripts/record_fixed_odds_shadow.py --plans-csv <终版方案CSV> --sales-day <销售日> --time-window <时间组> --analysis-at <北京时间ISO时间> --stage final --audit-output <固定赔率审计JSON>`，以2元虚拟注冻结到 `data/manual/fixed_odds_shadow_ledger.csv`。同一销售日和时间组使用固定唯一键，重复运行不得重复记录；每日赛果导入器自动结算该独立台账。确认阶段、预扫描阶段或区间内没有候选时不得留下注单记录。
+
+所有首轮分析、动态终版和晚间兜底的中文报告及用户回复必须同时包含两个独立章节：`真实入账方案`与`固定赔率影子方案（不入账）`。真实方案章节显示本次新增、沿用或0入账及原因；影子章节显示选择、总赔率、2元虚拟注、预计虚拟返奖和留档状态。没有区间内影子组合时也必须保留该章节并说明未生成原因，不得因真实方案为0或影子方案不入账而省略。每日复盘回复同时显示固定赔率影子的累计样本、命中率、ROI和最大回撤。
+
 若已配置 `API_FOOTBALL_KEY`，11:05确认阶段调用 `scripts/import_api_football_daily_intelligence.py --scan-json <确认扫描JSON> --date <销售日> --stage confirm`；动态终版阶段对本时间组扫描调用同一脚本并使用 `--stage final`。脚本只接受球队和开赛时间唯一匹配、且观测时尚未开赛的外部 fixture。确认阶段尝试伤停与最近7日日历；任一日历日期受套餐拒绝时不得写零负荷，并调用 `scripts/import_football_data_org_schedule_load.py` 生成账户可访问赛事范围内的七天负荷后备。终版阶段刷新伤停和确认首发。未配置凭据、接口不覆盖、匹配缺失/歧义时只记录 skipped/unmapped，不得人工猜测 fixture ID。每次审计记录每日/每分钟剩余额度；Free 套餐应优先保障终版刷新，禁止对同一场次无节制循环请求。API 自带 predictions 只能旁路比较，不得作为独立模型概率、训练标签或投注触发器。
 
 API-Football 亚洲让球快照统一调用 `scripts/import_api_football_odds_snapshot.py --scan-json <确认扫描JSON> --date <北京时间日期>`。脚本一次取得当天赛程并与全部体彩场次按球队及开赛时间唯一匹配；需要限制单项赛事时才增加 `--league-id <赛事ID>`。Free 套餐不允许直接查询当前赛季历史参数，因此禁止改用不可用的赛季历史参数。原始 JSON 写入 `data/external/api_football_odds/raw/`，全量替代盘写入 `snapshots/`，累计历史写入 `history.csv`；同一快照另生成 `_primary.csv`，每家机构只保留赔率最均衡且价格差阈值通过的主盘口。全量替代盘可用于价格曲线研究，但生产模型默认只能读取 `eligible_for_primary_research=true` 的主盘口行。开赛后、映射歧义、开赛时间缺失、非四分之一盘口全部只归档不研究。
@@ -143,7 +152,7 @@ API-Football 亚洲让球快照统一调用 `scripts/import_api_football_odds_sn
 
 提示词：
 
-> 在本地项目 `E:\ball-match-prediction-system\football-predictor` 执行每日 13:00 复盘。只复盘前一销售日已经留档的预测和投注方案，不生成新的赛前投注方案。先读取 `data/manual/betting_plan_ledger.csv`、对应日期的扫描/投注报告、任务注册表和最新复盘报告；先运行注册表 `retry`，对前一销售日及当天仍为 `pending_schedule`、`failed`、`updated` 的未过期任务尝试补建并回写结果。优先使用 `scripts/import_sporttery_results.py` 或中国体彩官方赛果，按 90 分钟赛果核验。更新台账的结果、返奖、净收益、ROI 和复盘说明，避免重复结算；部分命中和拆票方案逐项结算。生成 `artifacts/reviews/` 下的中文复盘报告，并汇总总体、按玩法和按时段 ROI。官方赛果不可用时明确标记待核验，不得猜测入账。
+> 在本地项目 `E:\ball-match-prediction-system\football-predictor` 执行每日 13:00 复盘。只复盘前一销售日已经留档的预测和投注方案，不生成新的赛前投注方案。先读取 `data/manual/betting_plan_ledger.csv`、对应日期的扫描/投注报告、任务注册表和最新复盘报告；先运行注册表 `retry`，对前一销售日及当天仍为 `pending_schedule`、`failed`、`updated` 的未过期任务尝试补建并回写结果。优先使用 `scripts/import_sporttery_results.py` 或中国体彩官方赛果，按 90 分钟赛果核验。体彩销售日跨越次日凌晨：带 `--ledger` 结算时导入器会自动把查询结束日扩展一天，并且每张方案只允许匹配其销售日及次一自然日的赛果；不得再把销售日直接等同于比赛自然日。更新台账的结果、返奖、净收益、ROI 和复盘说明，避免重复结算；部分命中和拆票方案逐项结算。生成 `artifacts/reviews/` 下的中文复盘报告，并汇总总体、按玩法和按时段 ROI。官方赛果不可用时明确标记待核验，不得猜测入账。
 
 体彩赛果 CSV 生成后必须额外运行 `scripts/settle_shadow_evidence_v2.py --results-csv <官方赛果CSV> --settled-at <北京时间>`。该命令只更新影子预测结果和虚拟方案返奖，输出 `artifacts/data/shadow_evidence_settlement_latest.json`，汇总已结算影子方案数、虚拟ROI及最大回撤；它不得写真实投注台账。未找到唯一官方赛果的预测保持 pending，禁止猜测结算。月度v3晋级计数只认影子方案台账中 `result=hit/miss` 的赛前冻结记录。
 
@@ -198,6 +207,8 @@ API-Football 亚洲让球快照统一调用 `scripts/import_api_football_odds_sn
 - `artifacts/eval/season_context_v7_candidate_decision_YYYY-MM-DD.json`（存在候选评估时）
 
 月度回顾至少拆分以下指标：数据源成功率、任务准时率、确认在售覆盖率、弃投率、玩法/联赛/时段 ROI、命中率、赔率区间表现、最大回撤、概率校准、Brier score/log loss（存在预测概率时）、收盘线价值（存在终版与早盘快照时），并明确区分“模型判断失败”和“数据/调度执行失败”。
+
+2026年9月起每月总控必须使用独立生产对话，名称采用“足球预测生产总控（YYYY-MM）”。2026-09首次迁移任务固定在2026-09-01的13:00复盘和2026-08月度回顾完成后执行，具体审计读取 `artifacts/data/football_controller_migration_schedule_2026-09.json`。迁移期间仍只允许一个ACTIVE heartbeat；新总控创建、交接文件读取、控制器目标线程迁移和下一次唤醒验证全部成功前，旧总控不得归档。
 
 月度回顾同时运行 `scripts/run_asian_handicap_research.py` 或读取其最新输出，按精确盘口、联赛和赛季检查样本量、全赢/半赢/走盘/半输/全输及机械基准 ROI。只有同场同时间内外盘配对达到训练门槛后，才允许评估盘口差值候选特征。
 

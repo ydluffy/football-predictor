@@ -75,6 +75,10 @@ def main() -> None:
     parser.add_argument("--start-before", default="", help="Optional kickoff upper bound, e.g. 2026-07-15 12:00.")
     parser.add_argument("--stake", type=float, default=100.0, help="Total stake per betting plan.")
     parser.add_argument("--max-matches", type=int, default=3)
+    parser.add_argument("--fixed-odds-min", type=float, default=6.00)
+    parser.add_argument("--fixed-odds-max", type=float, default=10.00)
+    parser.add_argument("--fixed-odds-target", type=float, default=8.00)
+    parser.add_argument("--fixed-odds-max-legs", type=int, default=4)
     parser.add_argument("--signal-csv", default="", help="Optional market signal feature CSV.")
     parser.add_argument("--handicap-model-csv", default="", help="Optional controlled handicap model predictions.")
     parser.add_argument("--plans-output", required=True)
@@ -100,6 +104,10 @@ def main() -> None:
         markets,
         stake=args.stake,
         max_matches=args.max_matches,
+        fixed_odds_min=args.fixed_odds_min,
+        fixed_odds_max=args.fixed_odds_max,
+        fixed_odds_target=args.fixed_odds_target,
+        fixed_odds_max_legs=args.fixed_odds_max_legs,
     )
     plans_frame = plans_to_frame(plans)
     matches_frame = pd.DataFrame(match_rows)
@@ -126,6 +134,16 @@ def main() -> None:
         "input_rows": int(len(markets)),
         "match_rows": int(len(matches_frame)),
         "plan_rows": int(len(plans_frame)),
+        "fixed_odds": {
+            "minimum": args.fixed_odds_min,
+            "maximum": args.fixed_odds_max,
+            "target": args.fixed_odds_target,
+            "max_legs": args.fixed_odds_max_legs,
+            "plan_generated": bool(
+                not plans_frame.empty
+                and plans_frame["plan_type"].astype(str).eq("固定赔率观察").any()
+            ),
+        },
         "handicap_model_rows": int(markets.get("handicap_model_usage", pd.Series(dtype=str)).astype(str).isin(["production_auxiliary", "limited_auxiliary"]).sum()),
         "plans_output": str(plans_output),
         "matches_output": str(matches_output),

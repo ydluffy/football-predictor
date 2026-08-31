@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from itertools import product
+from itertools import combinations, product
 from math import prod
 from pathlib import Path
+import re
 from typing import Iterable
 
 import pandas as pd
@@ -110,6 +111,13 @@ def _text(value: object) -> str:
     return "" if text.lower() in {"", "nan", "none", "null", "<na>"} else text
 
 
+def _match_number(value: object) -> str:
+    text = _text(value)
+    if re.fullmatch(r"\d+(?:\.0+)?", text):
+        return str(int(float(text))).zfill(3)
+    return text
+
+
 def _probability(value: object) -> float | None:
     try:
         parsed = float(value)
@@ -204,7 +212,7 @@ def classify_match(row: pd.Series) -> dict[str, object]:
         market_shape = f"{market_shape}/高平局权重"
 
     return {
-        "match_number": str(row.get("match_number", "")),
+        "match_number": _match_number(row.get("match_number", "")),
         "match_name": _match_name(row),
         "competition": str(row.get("competition", "")),
         "kickoff_time": str(row.get("kickoff_time", "")),
@@ -294,7 +302,7 @@ def _leg_from_rank(
 ) -> StrategyLeg:
     choices = tuple((labels[key], odd) for key, odd, _ in rank[:count])
     return StrategyLeg(
-        match_number=str(row.get("match_number", "")),
+        match_number=_match_number(row.get("match_number", "")),
         match_name=_match_name(row),
         play_type=play_type,
         selections=choices,
@@ -323,13 +331,13 @@ def _conservative_leg(row: pd.Series, item: dict[str, object]) -> StrategyLeg:
     # a noisy handicap result. Otherwise prefer the protected handicap market.
     if favorite_probability >= 0.58 and top_spf_odd <= 1.75:
         return StrategyLeg(
-            match_number=str(row.get("match_number", "")),
+            match_number=_match_number(row.get("match_number", "")),
             match_name=_match_name(row),
             play_type="胜平负",
             selections=((SPF_LABELS[top_spf_key], float(top_spf_odd)),),
         )
     return StrategyLeg(
-        match_number=str(row.get("match_number", "")),
+        match_number=_match_number(row.get("match_number", "")),
         match_name=_match_name(row),
         play_type="让球胜平负",
         selections=((RQSPF_LABELS[top_rq_key], float(top_rq_odd)),),
@@ -342,11 +350,45 @@ def _leg_confidence(leg: StrategyLeg) -> float:
     return min(1.0 / odd for _, odd in leg.selections)
 
 
+def _fixed_odds_legs(
+    candidates: list[StrategyLeg],
+    *,
+    minimum: float,
+    maximum: float,
+    target: float,
+    max_legs: int,
+) -> tuple[StrategyLeg, ...]:
+    """Pick a unique-match, single-selection combination inside a target odds band."""
+    if minimum <= 1.0 or maximum < minimum or not minimum <= target <= maximum:
+        raise ValueError("fixed odds require 1 < minimum <= target <= maximum")
+    eligible = [leg for leg in candidates if len(leg.selections) == 1]
+    ranked: list[tuple[tuple[int, float, float, tuple[str, ...]], tuple[StrategyLeg, ...]]] = []
+    for leg_count in range(1, min(max_legs, len(eligible)) + 1):
+        for legs in combinations(eligible, leg_count):
+            match_numbers = tuple(leg.match_number for leg in legs)
+            if len(set(match_numbers)) != leg_count:
+                continue
+            combined_odds = prod(leg.selections[0][1] for leg in legs)
+            if minimum <= combined_odds <= maximum:
+                score = (
+                    leg_count,
+                    abs(combined_odds - target),
+                    -min(_leg_confidence(leg) for leg in legs),
+                    match_numbers,
+                )
+                ranked.append((score, legs))
+    return min(ranked, key=lambda item: item[0])[1] if ranked else ()
+
+
 def build_multi_play_plans(
     markets: pd.DataFrame,
     *,
     stake: float = 100.0,
     max_matches: int = 3,
+    fixed_odds_min: float = 6.00,
+    fixed_odds_max: float = 10.00,
+    fixed_odds_target: float = 8.00,
+    fixed_odds_max_legs: int = 4,
 ) -> tuple[list[dict[str, object]], list[BettingPlan]]:
     if markets.empty:
         return [], []
@@ -385,6 +427,13 @@ def build_multi_play_plans(
     conservative_pool = low_risk_candidates or all_candidates
     conservative_legs = sorted(conservative_pool, key=_leg_confidence, reverse=True)[:2]
     value_legs = (low_risk_candidates or all_candidates)[:3]
+    fixed_odds_legs = _fixed_odds_legs(
+        conservative_pool,
+        minimum=fixed_odds_min,
+        maximum=fixed_odds_max,
+        target=fixed_odds_target,
+        max_legs=fixed_odds_max_legs,
+    )
 
     signal_notes = [
         str(item.get("market_signal_note", ""))
@@ -431,6 +480,24 @@ def build_multi_play_plans(
             risk_notes=f"让平天然波动大，只适合小额观察，不宜作为主仓位。盘口信号：{risk_suffix}",
         ),
     ]
+    if fixed_odds_legs:
+        plans.append(
+            BettingPlan(
+                plan_id="MULTI_PLAY_FIXED_ODDS_SHADOW",
+                plan_type="固定赔率观察",
+                title=f"固定赔率影子方案：目标 {fixed_odds_target:.2f}",
+                stake=BASE_BET_UNIT,
+                legs=fixed_odds_legs,
+                rationale=(
+                    f"从低风险方向中选择总赔率位于 {fixed_odds_min:.2f}–{fixed_odds_max:.2f} 的组合，"
+                    f"先减少串关腿数，再选择最接近 {fixed_odds_target:.2f} 的方案，用于持续检验固定赔率带命中率。"
+                ),
+                risk_notes=(
+                    "仅作影子观察，不得自动写入真实投注台账或增加投注金额；"
+                    f"若没有落在 {fixed_odds_min:.2f}–{fixed_odds_max:.2f} 的合格组合，本方案应为空。"
+                ),
+            )
+        )
 
     match_rows = []
     for item, suggestion in zip(classified, suggestions):
@@ -526,6 +593,8 @@ def write_multi_play_report(
     path.parent.mkdir(parents=True, exist_ok=True)
     plan_frame = plans_to_frame(plans)
     match_frame = pd.DataFrame(match_rows)
+    fixed_shadow_frame = plan_frame[plan_frame["plan_type"].astype(str).eq("固定赔率观察")].copy() if not plan_frame.empty else plan_frame
+    production_frame = plan_frame[~plan_frame["plan_type"].astype(str).eq("固定赔率观察")].copy() if not plan_frame.empty else plan_frame
 
     lines = [
         f"# {title}",
@@ -561,13 +630,13 @@ def write_multi_play_report(
                 ]
             )
         )
-    lines.extend(["", "## 投注结构候选", ""])
-    if plan_frame.empty:
-        lines.append("暂无投注结构候选。")
+    lines.extend(["", "## 生产投注候选（是否入账以终版闸门为准）", ""])
+    if production_frame.empty:
+        lines.append("暂无生产投注候选。")
     else:
         lines.append(
             _markdown_table(
-                plan_frame[
+                production_frame[
                     [
                         "plan_type",
                         "title",
@@ -586,6 +655,26 @@ def write_multi_play_report(
                 ]
             )
         )
+    lines.extend(["", "## 固定赔率影子方案（不入账）", ""])
+    if fixed_shadow_frame.empty:
+        lines.append("本次没有总赔率落在 6.00–10.00 的低风险组合，因此未生成影子方案。")
+    else:
+        lines.append("以下仅为2元虚拟观察，用于统计命中率、ROI和最大回撤，不得复制到真实投注台账。")
+        lines.append("")
+        lines.append(
+            _markdown_table(
+                fixed_shadow_frame[
+                    [
+                        "title",
+                        "total_stake",
+                        "estimated_odds_min",
+                        "estimated_payout_min",
+                        "selections",
+                        "risk_notes",
+                    ]
+                ]
+            )
+        )
     lines.extend(
         [
             "",
@@ -594,6 +683,7 @@ def write_multi_play_report(
             "- 稳健层优先控制断腿风险，适合进入模拟账本。",
             "- 防冷层用多选覆盖爆冷或平局，重点观察是否能减少大热误判。",
             "- 博高层只适合小额，核心看让平、比分、半全场是否与比赛脚本一致。",
+            "- 固定赔率影子层必须在每次用户回复中单独展示，即使没有方案也要说明原因；它不属于真实入账方案。",
             "- 所有复盘必须按体彩 90 分钟口径结算，加时和点球只做晋级分析。",
         ]
     )

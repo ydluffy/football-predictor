@@ -86,13 +86,65 @@ def test_build_multi_play_plans_from_market_rows() -> None:
         ]
     )
 
-    match_rows, plans = build_multi_play_plans(markets, stake=100)
+    match_rows, plans = build_multi_play_plans(
+        markets,
+        stake=100,
+        fixed_odds_min=1.80,
+        fixed_odds_max=2.00,
+        fixed_odds_target=1.90,
+        fixed_odds_max_legs=2,
+    )
 
     assert len(match_rows) == 2
-    assert [plan.plan_type for plan in plans] == ["稳健", "价值", "防冷", "博高"]
+    assert [plan.plan_type for plan in plans] == ["稳健", "价值", "防冷", "博高", "固定赔率观察"]
     assert plans[0].bet_count == 1
     assert plans[2].bet_count == 4
     assert "总进球" not in plans[0].rationale
+    fixed = plans[-1]
+    assert fixed.plan_id == "MULTI_PLAY_FIXED_ODDS_SHADOW"
+    assert fixed.odds_range == (1.91, 1.91)
+    assert "不得自动写入真实投注台账" in fixed.risk_notes
+
+
+def test_fixed_odds_observation_is_omitted_when_no_combination_is_in_band() -> None:
+    markets = pd.DataFrame(
+        [
+            {
+                "match_number": "101", "home_team": "A", "away_team": "B", "home_handicap": -1,
+                "spf_odds_home": 1.20, "spf_odds_draw": 6.0, "spf_odds_away": 12.0,
+                "rqspf_odds_home": 1.30, "rqspf_odds_draw": 5.0, "rqspf_odds_away": 8.0,
+            }
+        ]
+    )
+
+    _, plans = build_multi_play_plans(
+        markets,
+        fixed_odds_min=1.80,
+        fixed_odds_max=2.00,
+        fixed_odds_target=1.90,
+    )
+
+    assert all(plan.plan_type != "固定赔率观察" for plan in plans)
+
+
+def test_default_fixed_odds_observation_targets_six_to_ten() -> None:
+    markets = pd.DataFrame(
+        [
+            {
+                "match_number": number, "home_team": f"H{number}", "away_team": f"A{number}",
+                "home_handicap": -1, "spf_odds_home": 2.1, "spf_odds_draw": 3.2,
+                "spf_odds_away": 3.4, "rqspf_odds_home": 2.0,
+                "rqspf_odds_draw": 3.0, "rqspf_odds_away": 3.0,
+            }
+            for number in (1, 2, 3)
+        ]
+    )
+
+    _, plans = build_multi_play_plans(markets, max_matches=3)
+
+    fixed = next(plan for plan in plans if plan.plan_type == "固定赔率观察")
+    assert fixed.odds_range == (8.0, 8.0)
+    assert len(fixed.legs) == 3
 
 
 def test_high_risk_market_signal_demotes_deep_favorite_from_safe_plan() -> None:

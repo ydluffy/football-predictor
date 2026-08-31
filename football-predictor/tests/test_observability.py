@@ -69,7 +69,7 @@ def test_runtime_metadata_reads_model_manifest_and_quality_report(
     model_path.with_suffix(".manifest.json").write_text(
         json.dumps(
             {
-                "artifact_sha256": "abcdef1234567890",
+                "artifact_sha256": "abcdef1234567890",  # pragma: allowlist secret
                 "model_type": "logit",
                 "feature_version": "v3",
                 "created_at": "2026-08-28T00:00:00Z",
@@ -94,7 +94,7 @@ def test_runtime_metadata_reads_model_manifest_and_quality_report(
     model = model_runtime_metadata(model_path)
     data = data_runtime_metadata(report_path)
 
-    assert model["version"] == "abcdef123456"
+    assert model["version"] == "abcdef123456"  # pragma: allowlist secret
     assert model["manifest_status"] == "available"
     assert data["snapshot_version"] == "2026-08-28T01:00:00Z"
     assert data["quality_status"] == "pass"

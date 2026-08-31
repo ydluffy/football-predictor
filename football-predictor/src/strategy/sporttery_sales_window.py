@@ -346,6 +346,25 @@ def apply_task_status(
     raise KeyError(key)
 
 
+def retryable_tasks(registry: dict[str, Any], *, as_of: datetime) -> list[dict[str, Any]]:
+    """Return unfinished scheduler records that are still safe to schedule.
+
+    The hard lock is the latest safe retry boundary for a final-analysis task.
+    Once it has passed, the record remains available for audit but must not be
+    returned to an automation that could create a late betting workflow.
+    """
+    current = parse_china_datetime(as_of)
+    queue: list[dict[str, Any]] = []
+    for task in registry.get("tasks", []):
+        if task.get("status") not in {"pending_schedule", "failed", "updated"}:
+            continue
+        deadline_value = task.get("hard_lock") or task.get("sales_cutoff") or task.get("run_at")
+        if deadline_value and current >= parse_china_datetime(str(deadline_value)):
+            continue
+        queue.append(task)
+    return queue
+
+
 def save_registry(path: str | Path, registry: dict[str, Any]) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)

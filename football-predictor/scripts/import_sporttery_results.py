@@ -7,7 +7,7 @@ import math
 import re
 import sys
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.request import ProxyHandler, Request, build_opener
@@ -68,6 +68,24 @@ def fetch_json(start_date: str, end_date: str, proxy: str = "") -> dict[str, Any
     with opener.open(req, timeout=30) as resp:
         body = resp.read().decode("utf-8")
     return json.loads(body)
+
+
+def sales_window_result_end(end_date: str) -> str:
+    """Include the next calendar day because a Sporttery sales day crosses midnight."""
+    parsed = date.fromisoformat(end_date)
+    return (parsed + timedelta(days=1)).isoformat()
+
+
+def results_for_sales_day(results: pd.DataFrame, sales_day: str) -> pd.DataFrame:
+    """Limit settlement evidence to the sales day and its following calendar day."""
+    if results.empty or "date" not in results.columns:
+        return results
+    try:
+        start = date.fromisoformat(str(sales_day))
+    except ValueError:
+        return results.iloc[0:0]
+    allowed = {start.isoformat(), (start + timedelta(days=1)).isoformat()}
+    return results[results["date"].astype(str).isin(allowed)].copy()
 
 
 def _score_parts(score: str) -> tuple[int | None, int | None]:
@@ -292,7 +310,8 @@ def review_ledger(ledger_path: Path, results: pd.DataFrame, output_path: Path | 
         selections = split_plan_selections(str(row.get("selections", "")))
         if not selections:
             continue
-        evaluated = [evaluate_selection(selection, results) for selection in selections]
+        plan_results = results_for_sales_day(results, str(row.get("date", "")))
+        evaluated = [evaluate_selection(selection, plan_results) for selection in selections]
         if any(item[0] is None for item in evaluated):
             ledger.at[idx, "review_note"] = f"待官方赛果匹配：{'；'.join(item[1] for item in evaluated)}"
             continue
@@ -362,14 +381,30 @@ def main() -> None:
     parser.add_argument("--review-output", default="")
     parser.add_argument("--shadow-prediction-ledger", default="data/manual/shadow_prediction_ledger_v2.csv")
     parser.add_argument("--shadow-portfolio-ledger", default="data/manual/shadow_portfolio_ledger_v2.csv")
+    parser.add_argument("--fixed-odds-shadow-ledger", default="data/manual/fixed_odds_shadow_ledger.csv")
     parser.add_argument("--shadow-audit-output", default="artifacts/data/shadow_evidence_settlement_latest.json")
     parser.add_argument("--skip-shadow-settlement", action="store_true")
+    parser.add_argument(
+        "--calendar-date-only",
+        action="store_true",
+        help="Do not extend the query through the next calendar day. By default ledger settlement treats start/end as Sporttery sales days.",
+    )
     args = parser.parse_args()
+
+    effective_end_date = args.end_date
+    fixed_odds_path = Path(args.fixed_odds_shadow_ledger)
+    if not fixed_odds_path.is_absolute():
+        fixed_odds_path = ROOT / fixed_odds_path
+    sales_window_extension_applied = bool(
+        (args.ledger or fixed_odds_path.exists()) and not args.calendar_date_only
+    )
+    if sales_window_extension_applied:
+        effective_end_date = sales_window_result_end(args.end_date)
 
     if args.input_json:
         payload = json.loads(Path(args.input_json).read_text(encoding="utf-8"))
     else:
-        payload = fetch_json(args.start_date, args.end_date, proxy=args.proxy)
+        payload = fetch_json(args.start_date, effective_end_date, proxy=args.proxy)
     if args.raw_output:
         raw_output = Path(args.raw_output)
         raw_output.parent.mkdir(parents=True, exist_ok=True)
@@ -377,11 +412,18 @@ def main() -> None:
 
     results = parse_results(payload)
     frame = results_to_frame(results)
-    output_csv = Path(args.output_csv) if args.output_csv else ROOT / "data" / "external" / "sporttery_results" / f"sporttery_results_{args.start_date}_{args.end_date}.csv"
+    output_csv = Path(args.output_csv) if args.output_csv else ROOT / "data" / "external" / "sporttery_results" / f"sporttery_results_{args.start_date}_{effective_end_date}.csv"
     output_csv.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(output_csv, index=False, encoding="utf-8-sig")
 
-    summary: dict[str, Any] = {"rows": int(len(frame)), "output_csv": str(output_csv)}
+    summary: dict[str, Any] = {
+        "rows": int(len(frame)),
+        "output_csv": str(output_csv),
+        "requested_start_date": args.start_date,
+        "requested_end_date": args.end_date,
+        "effective_end_date": effective_end_date,
+        "sales_window_extension_applied": sales_window_extension_applied,
+    }
     if args.ledger:
         ledger_path = Path(args.ledger)
         ledger_output = Path(args.ledger_output) if args.ledger_output else ledger_path
@@ -390,6 +432,23 @@ def main() -> None:
         if args.review_output:
             write_review(Path(args.review_output), ledger)
             summary["review_output"] = args.review_output
+    if fixed_odds_path.exists():
+        fixed_ledger = review_ledger(fixed_odds_path, frame, fixed_odds_path)
+        settled_fixed = fixed_ledger[fixed_ledger["result"].astype(str).isin(["命中", "未中"])].copy()
+        fixed_stake = pd.to_numeric(settled_fixed.get("stake"), errors="coerce").fillna(0.0).sum()
+        fixed_payout = pd.to_numeric(settled_fixed.get("payout"), errors="coerce").fillna(0.0).sum()
+        fixed_hits = int(settled_fixed["result"].astype(str).eq("命中").sum())
+        summary["fixed_odds_shadow"] = {
+            "ledger": str(fixed_odds_path),
+            "settled_plans": int(len(settled_fixed)),
+            "hits": fixed_hits,
+            "hit_rate": round(fixed_hits / len(settled_fixed), 6) if len(settled_fixed) else None,
+            "stake": round(float(fixed_stake), 2),
+            "payout": round(float(fixed_payout), 2),
+            "net": round(float(fixed_payout - fixed_stake), 2),
+            "roi": round(float((fixed_payout - fixed_stake) / fixed_stake), 6) if fixed_stake else None,
+            "production_ledger_write_performed": False,
+        }
     if not args.skip_shadow_settlement:
         prediction_path = Path(args.shadow_prediction_ledger)
         portfolio_path = Path(args.shadow_portfolio_ledger)

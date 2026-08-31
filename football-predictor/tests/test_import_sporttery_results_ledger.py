@@ -75,3 +75,68 @@ def test_evaluate_selection_supports_inline_home_handicap_ledger_format():
 
 def test_parse_odds_value_supports_display_formula():
     assert importer.parse_odds_value("1.15*1.60=1.8400") == 1.84
+
+
+def test_sales_window_result_end_includes_next_calendar_day():
+    assert importer.sales_window_result_end("2026-08-27") == "2026-08-28"
+
+
+def test_review_ledger_uses_sales_day_and_next_calendar_day(tmp_path):
+    ledger_path = tmp_path / "ledger.csv"
+    ledger_path.write_text(
+        "date,time_window,plan_id,plan_type,selections,stake,estimated_odds,actual_odds,result,payout,net_profit,roi,review_note\n"
+        "2026-08-27,21:00,CROSS_DAY,稳健,008 巴萨vs毕尔巴鄂 胜平负:主胜@1.12,100,1.12,,待赛,,,,\n",
+        encoding="utf-8",
+    )
+    results = pd.DataFrame(
+        [
+            {
+                "date": "2026-08-28",
+                "match_number": "周四008",
+                "home_team": "巴萨",
+                "away_team": "毕尔巴鄂",
+                "all_home_team": "巴塞罗那",
+                "all_away_team": "毕尔巴鄂竞技",
+                "handicap": -1,
+                "full_time_score": "2:0",
+                "spf_result": "胜",
+                "rqspf_result": "让胜",
+            }
+        ]
+    )
+
+    reviewed = importer.review_ledger(ledger_path, results)
+
+    row = reviewed.iloc[0]
+    assert row["result"] == "命中"
+    assert row["payout"] == "112.00"
+
+
+def test_review_ledger_rejects_same_identity_outside_sales_window(tmp_path):
+    ledger_path = tmp_path / "ledger.csv"
+    ledger_path.write_text(
+        "date,time_window,plan_id,plan_type,selections,stake,estimated_odds,actual_odds,result,payout,net_profit,roi,review_note\n"
+        "2026-08-27,21:00,OUTSIDE,稳健,008 巴萨vs毕尔巴鄂 胜平负:主胜@1.12,100,1.12,,待赛,,,,\n",
+        encoding="utf-8",
+    )
+    results = pd.DataFrame(
+        [
+            {
+                "date": "2026-08-29",
+                "match_number": "周五008",
+                "home_team": "巴萨",
+                "away_team": "毕尔巴鄂",
+                "all_home_team": "巴塞罗那",
+                "all_away_team": "毕尔巴鄂竞技",
+                "handicap": -1,
+                "full_time_score": "2:0",
+                "spf_result": "胜",
+                "rqspf_result": "让胜",
+            }
+        ]
+    )
+
+    reviewed = importer.review_ledger(ledger_path, results)
+
+    assert reviewed.iloc[0]["result"] == "待赛"
+    assert "未匹配比赛" in reviewed.iloc[0]["review_note"]

@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
+import re
 from pathlib import Path
 
 import pandas as pd
@@ -11,6 +13,39 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def _money(series: pd.Series) -> pd.Series:
     return pd.to_numeric(series, errors="coerce").fillna(0.0)
+
+
+def _plan_odds(value: object) -> float | None:
+    text = str(value or "").strip()
+    if not text:
+        return None
+    try:
+        parsed = float(text)
+        return parsed if parsed > 1.0 else None
+    except ValueError:
+        pass
+    if "=" in text:
+        try:
+            parsed = float(text.rsplit("=", 1)[1].strip())
+            return parsed if parsed > 1.0 else None
+        except ValueError:
+            pass
+    factors = [float(item) for item in re.findall(r"\d+(?:\.\d+)?", text)]
+    if "*" in text and factors:
+        parsed = math.prod(factors)
+        return parsed if parsed > 1.0 else None
+    return factors[-1] if factors and factors[-1] > 1.0 else None
+
+
+def _with_plan_odds(frame: pd.DataFrame) -> pd.DataFrame:
+    result = frame.copy()
+    if result.empty:
+        result["parsed_plan_odds"] = pd.Series(dtype=float)
+        return result
+    actual = result.get("actual_odds", pd.Series("", index=result.index)).map(_plan_odds)
+    estimated = result.get("estimated_odds", pd.Series("", index=result.index)).map(_plan_odds)
+    result["parsed_plan_odds"] = actual.where(actual.notna(), estimated)
+    return result
 
 
 def _summary(frame: pd.DataFrame, stake_col: str, payout_col: str, result_col: str | None = None) -> dict[str, object]:
@@ -69,10 +104,32 @@ def build_report(
     ledger: pd.DataFrame,
     scenario_summary: pd.DataFrame,
     scenario_details: pd.DataFrame,
+    fixed_odds_ledger: pd.DataFrame | None = None,
+    fixed_odds_min: float = 6.00,
+    fixed_odds_max: float = 10.00,
 ) -> tuple[str, dict[str, object]]:
-    reviewed = ledger[ledger["result"].astype(str).str.len() > 0].copy() if not ledger.empty else ledger
+    reviewed = ledger[ledger["result"].astype(str).isin(["命中", "未中"])].copy() if not ledger.empty else ledger
+    reviewed = _with_plan_odds(reviewed)
     formal_summary = _summary(reviewed, "stake", "payout", "result")
     formal_by_type = _group_summary(reviewed, "plan_type", "stake", "payout", "result")
+    fixed_odds_frame = reviewed[
+        reviewed["parsed_plan_odds"].ge(fixed_odds_min)
+        & reviewed["parsed_plan_odds"].le(fixed_odds_max)
+    ].copy()
+    fixed_odds_summary = _summary(fixed_odds_frame, "stake", "payout", "result")
+    fixed_average_odds = float(fixed_odds_frame["parsed_plan_odds"].mean()) if not fixed_odds_frame.empty else 0.0
+    fixed_odds_summary.update(
+        {
+            "odds_min": fixed_odds_min,
+            "odds_max_inclusive": fixed_odds_max,
+            "average_odds": round(fixed_average_odds, 4),
+            "break_even_hit_rate_at_average_odds": round(1.0 / fixed_average_odds, 4) if fixed_average_odds else 0.0,
+        }
+    )
+    prospective = fixed_odds_ledger if fixed_odds_ledger is not None else pd.DataFrame()
+    if not prospective.empty:
+        prospective = prospective[prospective["result"].astype(str).isin(["命中", "未中"])].copy()
+    prospective_summary = _summary(prospective, "stake", "payout", "result")
 
     scenario_pack_summary = _summary(scenario_summary, "stake", "payout")
     scenario_by_match = scenario_summary.copy()
@@ -97,6 +154,14 @@ def build_report(
         f"- 正式串关/方向台账：{formal_summary['plans']} 个方案，投入 {formal_summary['stake']:.2f}，返奖 {formal_summary['payout']:.2f}，净收益 {formal_summary['net']:.2f}，ROI {formal_summary['roi']:.2%}，方案命中率 {formal_summary['hit_rate']:.2%}。",
         f"- 同场多玩法剧本包：{scenario_pack_summary['plans']} 个方案包，投入 {scenario_pack_summary['stake']:.2f}，返奖 {scenario_pack_summary['payout']:.2f}，净收益 {scenario_pack_summary['net']:.2f}，ROI {scenario_pack_summary['roi']:.2%}，子票命中率 {scenario_pack_summary['hit_rate']:.2%}。",
         f"- 两类已复盘样本合计：投入 {combined['stake']:.2f}，返奖 {combined['payout']:.2f}，净收益 {combined['net']:.2f}，ROI {combined['roi']:.2%}。",
+        "",
+        f"## 固定赔率观察基线（{fixed_odds_min:.2f}–{fixed_odds_max:.2f}，含上下限）",
+        "",
+        f"- 历史命中率：{fixed_odds_summary['hit_rate']:.2%}（{fixed_odds_summary['plans']} 个已结算方案）。",
+        f"- 投入 {fixed_odds_summary['stake']:.2f}，返奖 {fixed_odds_summary['payout']:.2f}，净收益 {fixed_odds_summary['net']:.2f}，ROI {fixed_odds_summary['roi']:.2%}。",
+        f"- 平均赔率 {fixed_odds_summary['average_odds']:.4f}，对应盈亏平衡命中率约 {fixed_odds_summary['break_even_hit_rate_at_average_odds']:.2%}。",
+        "- 这只是从既有不同策略中按赔率区间切出的回顾基线，不是前瞻回测；新增固定赔率方案必须从现在起独立影子记录，防止事后筛选偏差。",
+        f"- 独立前瞻影子样本：{prospective_summary['plans']} 个，命中率 {prospective_summary['hit_rate']:.2%}，ROI {prospective_summary['roi']:.2%}，净收益 {prospective_summary['net']:.2f}（虚拟资金）。",
         "",
         "## 正式台账按方案类型",
         "",
@@ -125,6 +190,8 @@ def build_report(
         "formal": formal_summary,
         "scenario": scenario_pack_summary,
         "combined": combined,
+        "fixed_odds_observation_baseline": fixed_odds_summary,
+        "fixed_odds_forward_shadow": prospective_summary,
     }
     return "\n".join(lines) + "\n", metrics
 
@@ -136,6 +203,9 @@ def main() -> None:
     parser.add_argument("--scenario-details", default="data/manual/sporttery_scenario_portfolio_review_2026-07-15_2100_details.csv")
     parser.add_argument("--report-output", required=True)
     parser.add_argument("--metrics-output", required=True)
+    parser.add_argument("--fixed-odds-ledger", default="data/manual/fixed_odds_shadow_ledger.csv")
+    parser.add_argument("--fixed-odds-min", type=float, default=6.00)
+    parser.add_argument("--fixed-odds-max", type=float, default=10.00)
     args = parser.parse_args()
 
     ledger_path = ROOT / args.ledger
@@ -144,8 +214,17 @@ def main() -> None:
     ledger = pd.read_csv(ledger_path, encoding="utf-8-sig", keep_default_na=False) if ledger_path.exists() else pd.DataFrame()
     scenario_summary = pd.read_csv(scenario_summary_path, encoding="utf-8-sig", keep_default_na=False) if scenario_summary_path.exists() else pd.DataFrame()
     scenario_details = pd.read_csv(scenario_details_path, encoding="utf-8-sig", keep_default_na=False) if scenario_details_path.exists() else pd.DataFrame()
+    fixed_odds_path = ROOT / args.fixed_odds_ledger
+    fixed_odds_ledger = pd.read_csv(fixed_odds_path, encoding="utf-8-sig", keep_default_na=False) if fixed_odds_path.exists() else pd.DataFrame()
 
-    report, metrics = build_report(ledger, scenario_summary, scenario_details)
+    report, metrics = build_report(
+        ledger,
+        scenario_summary,
+        scenario_details,
+        fixed_odds_ledger=fixed_odds_ledger,
+        fixed_odds_min=args.fixed_odds_min,
+        fixed_odds_max=args.fixed_odds_max,
+    )
     report_output = ROOT / args.report_output
     metrics_output = ROOT / args.metrics_output
     report_output.parent.mkdir(parents=True, exist_ok=True)

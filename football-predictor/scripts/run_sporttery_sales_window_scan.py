@@ -26,6 +26,7 @@ from strategy.sporttery_sales_window import (  # noqa: E402
     parse_china_datetime,
     read_csv_rows,
     render_scan_markdown,
+    retryable_tasks,
     save_registry,
     upsert_registry_tasks,
 )
@@ -338,13 +339,10 @@ def task_status_command(args: argparse.Namespace) -> int:
 
 
 def retry_command(args: argparse.Namespace) -> int:
+    current = parse_china_datetime(args.as_of or datetime.now(CHINA_TZ))
     path = project_path(args.registry) if args.registry else default_registry_path(args.sales_day)
-    registry = load_registry(path, sales_day=datetime.now(CHINA_TZ).date())
-    queue = [
-        item
-        for item in registry.get("tasks", [])
-        if item.get("status") in {"pending_schedule", "failed", "updated"}
-    ]
+    registry = load_registry(path, sales_day=date.fromisoformat(args.sales_day))
+    queue = retryable_tasks(registry, as_of=current)
     print(json.dumps({"registry": str(path), "retry_queue": queue}, ensure_ascii=False, indent=2))
     return 0 if not queue else 2
 
@@ -386,6 +384,7 @@ def build_parser() -> argparse.ArgumentParser:
     retry = subparsers.add_parser("retry")
     retry.add_argument("--sales-day", required=True)
     retry.add_argument("--registry", default="")
+    retry.add_argument("--as-of", default="")
     retry.set_defaults(func=retry_command)
     return parser
 
