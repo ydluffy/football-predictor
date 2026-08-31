@@ -1,0 +1,2 @@
+date,team,player,player_id,status,impact,reason,source,source_url,confidence,reported_at,updated_at,notes
+2026-06-27,Germany,Example Player,,injured,1.0,muscle injury,transfermarkt,https://www.transfermarkt.com/example,0.80,2026-06-27T08:00:00Z,2026-06-27T08:00:00Z,Example row; replace with verified public source.

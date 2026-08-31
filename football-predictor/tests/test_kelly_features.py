@@ -44,6 +44,23 @@ def test_build_kelly_proxy_features_missing_fields_all_zero():
     assert (out.to_numpy() == 0.0).all()
 
 
+def test_build_kelly_proxy_features_uses_base_with_last_odds():
+    df = pd.DataFrame(
+        {
+            "odds_home": [2.0],
+            "odds_draw": [3.2],
+            "odds_away": [4.0],
+            "odds_home_last": [1.8],
+            "odds_draw_last": [3.4],
+            "odds_away_last": [4.5],
+        }
+    )
+    out = build_kelly_proxy_features(df)
+
+    assert out.loc[0, "delta_kelly_proxy_home"] > 0
+    assert out.loc[0, "kelly_direction_home"] == 1
+
+
 def test_build_kelly_proxy_features_nan_safe_degrade_to_zero():
     df = pd.DataFrame(
         {
@@ -59,4 +76,3 @@ def test_build_kelly_proxy_features_nan_safe_degrade_to_zero():
     assert float(out.loc[0, "kelly_proxy_home"]) == 0.0
     assert float(out.loc[1, "kelly_proxy_draw"]) == 0.0
     assert not np.isnan(out.to_numpy()).any()
-

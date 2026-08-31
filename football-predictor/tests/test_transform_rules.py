@@ -3,7 +3,7 @@ from __future__ import annotations
 import numpy as np
 import pandas as pd
 
-from data.transform_rules import standardize_dataset_values
+from data.transform_rules import parse_match_dates, standardize_dataset_values
 
 
 def test_standardize_dataset_values_basic_conversions():
@@ -33,3 +33,12 @@ def test_standardize_dataset_values_basic_conversions():
     assert np.isclose(out.loc[0, "line_move"], -0.05)
     assert np.isnan(out.loc[1, "line_move"])
 
+
+def test_parse_match_dates_uses_day_first_for_football_data():
+    parsed = parse_match_dates(pd.Series(["09/08/2024", "31/12/2024", "2025-01-02"]))
+
+    assert parsed.dt.strftime("%Y-%m-%d").tolist() == [
+        "2024-08-09",
+        "2024-12-31",
+        "2025-01-02",
+    ]

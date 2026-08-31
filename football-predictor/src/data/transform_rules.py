@@ -16,11 +16,41 @@ _ACTUAL_RESULT_MAP = {
 }
 
 
+def parse_match_dates(series: pd.Series) -> pd.Series:
+    raw = series.astype("string").str.strip()
+    parsed = pd.to_datetime(raw, format="%Y-%m-%d", errors="coerce")
+
+    remaining = parsed.isna() & raw.notna()
+    if remaining.any():
+        parsed.loc[remaining] = pd.to_datetime(
+            raw.loc[remaining],
+            format="%d/%m/%Y",
+            errors="coerce",
+        )
+
+    remaining = parsed.isna() & raw.notna()
+    if remaining.any():
+        parsed.loc[remaining] = pd.to_datetime(
+            raw.loc[remaining],
+            format="%d/%m/%y",
+            errors="coerce",
+        )
+
+    remaining = parsed.isna() & raw.notna()
+    if remaining.any():
+        parsed.loc[remaining] = pd.to_datetime(
+            raw.loc[remaining],
+            errors="coerce",
+            dayfirst=True,
+        )
+    return parsed
+
+
 def standardize_dataset_values(df: pd.DataFrame) -> pd.DataFrame:
     out = df.copy()
 
     if "date" in out.columns:
-        dt = pd.to_datetime(out["date"], errors="coerce")
+        dt = parse_match_dates(out["date"])
         out["date"] = dt.dt.date.astype("string")
 
     if "injury_flag" in out.columns:
@@ -44,9 +74,20 @@ def standardize_dataset_values(df: pd.DataFrame) -> pd.DataFrame:
         "xg_home",
         "xg_away",
         "line_move",
+        "home_goals",
+        "away_goals",
+        "home_shots",
+        "away_shots",
+        "home_shots_on_target",
+        "away_shots_on_target",
+        "home_corners",
+        "away_corners",
+        "home_yellow_cards",
+        "away_yellow_cards",
+        "home_red_cards",
+        "away_red_cards",
     ):
         if c in out.columns:
             out[c] = pd.to_numeric(out[c], errors="coerce").astype(float)
 
     return out
-

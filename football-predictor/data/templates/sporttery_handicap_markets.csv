@@ -1,0 +1,3 @@
+date,match_number,home_team,away_team,home_handicap,source,updated_at,notes
+2026-06-25,周四001,Japan,Sweden,主队让1球,sporttery_manual,2026-06-25 10:00,示例：负数/主队让表示主队让球
+2026-06-25,周四002,Ecuador,Germany,平手盘,sporttery_manual,2026-06-25 10:00,示例：平手盘可写0或平手盘

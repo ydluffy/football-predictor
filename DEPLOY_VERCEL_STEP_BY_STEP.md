@@ -11,9 +11,11 @@
 ## 1. 在 Vercel 导入项目
 1. 打开 Vercel → `Add New...` → `Project`
 2. 选择你的 Git 仓库（`ball-match-prediction-system`）
-3. 点击 `Deploy`
+3. 在项目配置中将 `Root Directory` 设置为 `web`
+4. 保持 Framework Preset 为 `Next.js`，安装和构建命令使用默认值
+5. 点击 `Deploy`
 
-说明：根目录的 `vercel.json` 已配置好构建命令，会自动进入 `web/` 安装和构建。
+说明：Next.js 的 `package.json` 位于 `web/`。Vercel 必须从这个目录检测、安装和构建项目。
 
 ## 2. 配置环境变量（必须）
 进入 Vercel 项目：`Settings` → `Environment Variables` → 逐条添加：
@@ -49,4 +51,3 @@
 
 ### 2) 导入失败（football-data.org 限流）
 免费层是 10 次/分钟。系统已做了节流，但如果你频繁点导入，可能触发限流。等 1-2 分钟再试。
-

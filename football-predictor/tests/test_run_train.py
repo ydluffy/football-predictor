@@ -1,15 +1,17 @@
 from __future__ import annotations
 
 import importlib.util
+from pathlib import Path
+from types import SimpleNamespace
+
 import pandas as pd
 import pytest
 
 from config.settings import get_settings
 
 
-def _load_run_train_main():
+def _load_run_train_module():
     root = __file__
-    from pathlib import Path
 
     script_path = Path(root).resolve().parents[1] / "scripts" / "run_train.py"
     spec = importlib.util.spec_from_file_location("run_train_script", str(script_path))
@@ -17,7 +19,26 @@ def _load_run_train_main():
         raise RuntimeError("无法加载 scripts/run_train.py")
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)
-    return module.main
+    return module
+
+
+def _load_run_train_main():
+    return _load_run_train_module().main
+
+
+def test_default_data_path_falls_back_to_versioned_template(tmp_path):
+    module = _load_run_train_module()
+    project_root = tmp_path / "football-predictor"
+    raw_dir = project_root / "data" / "raw"
+    template = project_root / "data" / "templates" / "sample_matches.csv"
+    template.parent.mkdir(parents=True)
+    template.write_text("match_id,actual_result\nm1,H\n", encoding="utf-8")
+
+    settings = SimpleNamespace(data_raw_dir=raw_dir, project_root=project_root)
+
+    resolved = module._resolve_data_path(settings=settings, explicit_path="")
+
+    assert Path(resolved) == template
 
 
 def test_run_train_cv_true_stacking_oof_explicitly_raises(monkeypatch):
@@ -99,3 +120,37 @@ def test_run_train_missing_data_path_raises(monkeypatch, tmp_path):
     with pytest.raises(FileNotFoundError):
         monkeypatch.setattr("sys.argv", ["run_train.py", "--model-type", "logit", "--cv", "false", "--data-path", str(root / "missing.csv")])
         main()
+
+
+def test_run_train_cv_uses_specified_data_path(monkeypatch, tmp_path):
+    main = _load_run_train_main()
+    root = tmp_path / "football-predictor"
+    custom = root / "data" / "custom"
+    custom.mkdir(parents=True, exist_ok=True)
+
+    df = pd.DataFrame(
+        {
+            "match_id": [f"m{i}" for i in range(36)],
+            "date": pd.date_range("2025-01-01", periods=12, freq="D").repeat(3).astype(str),
+            "league": ["EPL"] * 36,
+            "odds_home": [1.8, 2.1, 2.8] * 12,
+            "odds_draw": [3.2, 3.3, 3.1] * 12,
+            "odds_away": [4.2, 3.5, 2.4] * 12,
+            "actual_result": ["H", "D", "A"] * 12,
+        }
+    )
+    path = custom / "cv.csv"
+    df.to_csv(path, index=False)
+
+    monkeypatch.setenv("FOOTBALL_PREDICTOR_ROOT", str(root))
+    get_settings.cache_clear()
+    settings = get_settings()
+    monkeypatch.setattr(
+        "sys.argv",
+        ["run_train.py", "--model-type", "logit", "--cv", "true", "--data-path", str(path)],
+    )
+
+    main()
+
+    out = pd.read_csv(settings.eval_cv_results_path)
+    assert out["test_size"].tolist() == [9, 9, 9]

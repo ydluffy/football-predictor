@@ -5,6 +5,7 @@ from pathlib import Path
 import pandas as pd
 
 from config.settings import get_settings
+from data.transform_rules import parse_match_dates
 
 
 REQUIRED_COLUMNS = ["match_id", "odds_home", "odds_draw", "odds_away", "actual_result"]
@@ -19,7 +20,7 @@ def load_matches(path: str) -> pd.DataFrame:
     else:
         csv_path = settings.data_raw_dir / "sample_matches.csv"
 
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, low_memory=False)
     if df.empty:
         raise ValueError("空数据：CSV 无任何记录")
 
@@ -48,7 +49,7 @@ def load_matches_with_meta(path: str, *, extra_columns: list[str] | None = None)
     else:
         csv_path = settings.data_raw_dir / "sample_matches.csv"
 
-    df = pd.read_csv(csv_path)
+    df = pd.read_csv(csv_path, low_memory=False)
     if df.empty:
         raise ValueError("空数据：CSV 无任何记录")
 
@@ -64,7 +65,22 @@ def load_matches_with_meta(path: str, *, extra_columns: list[str] | None = None)
     for c in df.columns:
         if c in cols:
             continue
-        if c in {"home_team", "away_team"}:
+        if c in {
+            "home_team",
+            "away_team",
+            "home_goals",
+            "away_goals",
+            "home_shots",
+            "away_shots",
+            "home_shots_on_target",
+            "away_shots_on_target",
+            "home_corners",
+            "away_corners",
+            "home_yellow_cards",
+            "away_yellow_cards",
+            "home_red_cards",
+            "away_red_cards",
+        }:
             cols.append(c)
             continue
         if c.startswith(("odds_home_", "odds_draw_", "odds_away_")):
@@ -95,7 +111,7 @@ def load_matches_with_meta(path: str, *, extra_columns: list[str] | None = None)
     out["actual_result"] = out["actual_result"].astype(str).str.upper()
 
     if "date" in out.columns:
-        out["date"] = pd.to_datetime(out["date"], errors="coerce")
+        out["date"] = parse_match_dates(out["date"])
 
     return out
 

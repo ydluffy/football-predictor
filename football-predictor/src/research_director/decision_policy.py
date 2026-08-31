@@ -19,6 +19,9 @@ def decide_candidate_upgrade(
     data_quality_ok: bool,
     high_confidence_errors_delta: int,
     brier_improvement_min: float = 0.0,
+    cross_season_logloss_difference: float | None = None,
+    bootstrap_ci95_high: float | None = None,
+    require_cross_season_evidence: bool = False,
 ) -> UpgradeDecision:
     if not data_quality_ok:
         return UpgradeDecision(decision="keep_current", gate_reasons=["data_quality_failed"], details={})
@@ -29,6 +32,33 @@ def decide_candidate_upgrade(
             decision="keep_current",
             gate_reasons=["no_metric_improvement", "high_confidence_errors_increased"],
             details={"delta": int(high_confidence_errors_delta)},
+        )
+
+    if require_cross_season_evidence:
+        missing = []
+        if cross_season_logloss_difference is None:
+            missing.append("cross_season_logloss_difference")
+        if bootstrap_ci95_high is None:
+            missing.append("bootstrap_ci95_high")
+        if missing:
+            return UpgradeDecision(
+                decision="keep_current",
+                gate_reasons=["missing_cross_season_evidence"],
+                details={"missing": missing},
+            )
+
+    if cross_season_logloss_difference is not None and float(cross_season_logloss_difference) >= 0.0:
+        return UpgradeDecision(
+            decision="keep_current",
+            gate_reasons=["cross_season_logloss_not_improved"],
+            details={"cross_season_logloss_difference": float(cross_season_logloss_difference)},
+        )
+
+    if bootstrap_ci95_high is not None and float(bootstrap_ci95_high) >= 0.0:
+        return UpgradeDecision(
+            decision="keep_current",
+            gate_reasons=["bootstrap_not_significant"],
+            details={"bootstrap_ci95_high": float(bootstrap_ci95_high)},
         )
 
     cur_brier = float(current_metrics.get("brier", 1e9))

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { fetchMajorLeagueMatches } from "@/lib/footballDataOrg";
+import { fetchMajorLeagueMatches, type FixtureRow } from "@/lib/footballDataOrg";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST(req: Request) {
@@ -33,7 +33,7 @@ export async function POST(req: Request) {
     });
   }
 
-  let rows: any[] = [];
+  let rows: FixtureRow[] = [];
   try {
     rows = await fetchMajorLeagueMatches(dateFrom, dateTo);
   } catch (e) {

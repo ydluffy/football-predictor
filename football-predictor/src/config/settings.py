@@ -87,6 +87,7 @@ class Settings(BaseModel):
     eval_data_missing_report_path: Path
     eval_dataset_validation_path: Path
     eval_dataset_missing_report_path: Path
+    eval_data_model_quality_gate_path: Path
     data_ingest_input_default_path: Path
     data_ingest_output_path: Path
     eval_ingest_mapping_record_path: Path
@@ -218,6 +219,7 @@ def get_settings() -> Settings:
         eval_data_missing_report_path=artifacts_eval_dir / "data_missing_report.csv",
         eval_dataset_validation_path=artifacts_eval_dir / "dataset_validation.json",
         eval_dataset_missing_report_path=artifacts_eval_dir / "dataset_missing_report.csv",
+        eval_data_model_quality_gate_path=artifacts_eval_dir / "data_model_quality_gate.json",
         data_ingest_input_default_path=data_external_dir / "incoming_matches.csv",
         data_ingest_output_path=data_ingested_dir / "matches_standardized.csv",
         eval_ingest_mapping_record_path=artifacts_eval_dir / "ingest_mapping_record.json",

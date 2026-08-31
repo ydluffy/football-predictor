@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import type { PredictionApiItem } from "@/lib/databaseTypes";
 
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as { date?: string };
@@ -15,13 +16,13 @@ export async function POST(req: Request) {
   });
   const predsTxt = await predsResp.text();
   if (!predsResp.ok) return NextResponse.json({ error: predsTxt || `HTTP ${predsResp.status}` }, { status: 500 });
-  const predsJson = JSON.parse(predsTxt) as { predictions: any[] };
+  const predsJson = JSON.parse(predsTxt) as { predictions?: PredictionApiItem[] };
   const predictions = predsJson.predictions || [];
   if (!predictions.length) {
     return NextResponse.json({ date, snapshotted: 0 });
   }
 
-  const upserts = predictions.map((p: any) => ({
+  const upserts = predictions.map((p) => ({
     fixture_id: p.fixture_id,
     model_version: "poisson_v1",
     as_of_date: date,

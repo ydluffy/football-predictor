@@ -55,6 +55,24 @@ def test_build_odds_sequence_features_missing_fields_all_zero():
     assert (X.to_numpy() == 0.0).all()
 
 
+def test_build_odds_sequence_features_uses_base_as_open_fallback():
+    df = pd.DataFrame(
+        {
+            "odds_home": [2.0],
+            "odds_draw": [3.2],
+            "odds_away": [4.0],
+            "odds_home_last": [1.8],
+            "odds_draw_last": [3.4],
+            "odds_away_last": [4.5],
+        }
+    )
+    X = build_odds_sequence_features(df)
+
+    assert np.isclose(X.loc[0, "delta_home_open_last"], -0.2)
+    assert np.isclose(X.loc[0, "delta_draw_open_last"], 0.2)
+    assert np.isclose(X.loc[0, "delta_away_open_last"], 0.5)
+
+
 def test_build_odds_sequence_features_nan_safe_degrade_to_zero():
     df = pd.DataFrame(
         {
@@ -74,4 +92,3 @@ def test_build_odds_sequence_features_nan_safe_degrade_to_zero():
     assert float(X.loc[1, "delta_draw_open_last"]) == 0.0
     assert float(X.loc[1, "recent_home_move"]) == 0.0
     assert not np.isnan(X.to_numpy()).any()
-

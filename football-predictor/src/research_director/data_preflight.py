@@ -101,7 +101,7 @@ def preflight_real_data(
 
     parse_ratio = None
     if "date" in df_std.columns:
-        dt = pd.to_datetime(df_std["date"], errors="coerce", utc=True)
+        dt = pd.to_datetime(df_std["date"], errors="coerce", utc=True, format="mixed")
         parse_ratio = float(dt.notna().mean())
     else:
         parse_ratio = 0.0
@@ -116,4 +116,3 @@ def preflight_real_data(
 
     status = "ok" if not reasons else "review_required"
     return PreflightResult(status=status, reasons=reasons, details=details)
-

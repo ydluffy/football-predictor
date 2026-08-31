@@ -23,7 +23,7 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--input-path", required=True)
     parser.add_argument("--mapping-path", required=True)
-    parser.add_argument("--feature-version", choices=["v1", "v2", "v3"], default="v2")
+    parser.add_argument("--feature-version", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"], default="v2")
     args = parser.parse_args()
 
     ensure_project_dirs()

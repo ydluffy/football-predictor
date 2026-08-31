@@ -1,0 +1,5 @@
+date,match_id,match_number,home_team,away_team,play_type,selection,odds,source,snapshot_type,captured_at,notes
+2026-07-04,,001,Canada,Morocco,total_goals,1,3.50,sporttery_manual,latest,2026-07-04T18:00:00+08:00,
+2026-07-04,,001,Canada,Morocco,total_goals,2,3.40,sporttery_manual,latest,2026-07-04T18:00:00+08:00,
+2026-07-04,,001,Canada,Morocco,correct_score,0:1,6.50,sporttery_manual,latest,2026-07-04T18:00:00+08:00,
+2026-07-04,,001,Canada,Morocco,half_full_time,D-A,5.20,sporttery_manual,latest,2026-07-04T18:00:00+08:00,

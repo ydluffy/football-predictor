@@ -15,8 +15,9 @@ class FootballDataClient:
     负责抓取和拉取实时的足球赛程与高级特征数据（伤停、xG、赔率变动）。
     支持对接 API-Football 或其他付费数据源，并在没有 API Key 时回退到公共页面爬取或高质量 Mock 数据。
     """
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str = None, *, allow_mock: bool = False):
         self.api_key = api_key or os.getenv("API_FOOTBALL_KEY")
+        self.allow_mock = bool(allow_mock)
         self.headers = {
             "x-apisports-key": self.api_key,
         } if self.api_key else {}
@@ -134,14 +135,51 @@ class FootballDataClient:
                         parsed_matches.append(match_data)
                         
                     if parsed_matches:
-                        return pd.DataFrame(parsed_matches)
+                        out = pd.DataFrame(parsed_matches)
+                        if not self.allow_mock:
+                            synthetic_columns = [
+                                "odds_home",
+                                "odds_draw",
+                                "odds_away",
+                                "odds_home_open",
+                                "odds_draw_open",
+                                "odds_away_open",
+                                "odds_home_last",
+                                "odds_draw_last",
+                                "odds_away_last",
+                                "xg_home",
+                                "xg_away",
+                                "injury_flag",
+                                "line_move",
+                            ]
+                            out.loc[:, synthetic_columns] = pd.NA
+                            out["data_source"] = "thesportsdb"
+                            out["data_quality"] = "schedule_only"
+                            out["is_predictable"] = False
+                        return out
                     
             logger.warning(f"公开接口返回的数据为空或解析失败，启用 Mock 数据")
         except Exception as e:
             logger.warning(f"抓取公开实时数据异常: {e}，回退到 Mock 数据")
             
         # 如果爬虫失败或者当天没有大联赛，回退到兜底的 Mock 逻辑
-        return self._generate_mock_matches(date_str)
+        if self.allow_mock:
+            return self._generate_mock_matches(date_str)
+        return pd.DataFrame(
+            columns=[
+                "match_id",
+                "date",
+                "league",
+                "home_team",
+                "away_team",
+                "odds_home",
+                "odds_draw",
+                "odds_away",
+                "data_source",
+                "data_quality",
+                "is_predictable",
+            ]
+        )
 
     def _generate_mock_matches(self, date_str: str) -> pd.DataFrame:
         """生成高质量的模拟实时赛程（包含模型需要的 v2/v3 高级特征）"""

@@ -62,6 +62,12 @@ class BaselineLogitModel:
         self.feature_names_ = list(X.columns)
         return self
 
+    @property
+    def sklearn_estimator(self) -> Pipeline:
+        if self._pipeline is None:
+            raise ValueError("模型未训练")
+        return self._pipeline
+
     def predict_proba(self, X: pd.DataFrame) -> pd.DataFrame:
         if self._pipeline is None:
             raise ValueError("模型未训练")

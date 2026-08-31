@@ -10,7 +10,7 @@ _DEFAULT_EXCLUDE_COLS = {"target", "label", "y", "result", "home_goals", "away_g
 _REQUIRED_BASIC_COLUMNS = ["odds_home", "odds_draw", "odds_away", "actual_result"]
 _RESULT_VALUES = {"H", "D", "A"}
 DEFAULT_FEATURE_VERSION = "v2"
-SUPPORTED_FEATURE_VERSIONS = {"v1", "v2", "v3"}
+SUPPORTED_FEATURE_VERSIONS = {"v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"}
 
 
 def _is_numeric(series: pd.Series) -> bool:
@@ -188,6 +188,31 @@ def build_inference_features(df: pd.DataFrame, *, feature_version: str = DEFAULT
             ],
             axis=1,
         )
+    if feature_version in {"v4", "v5", "v6", "v7", "v8"}:
+        from features.team_history_features import (
+            MODEL_HISTORY_FEATURE_COLUMNS,
+            build_team_history_features,
+        )
+
+        history = build_team_history_features(df)
+        X = pd.concat([X, history[MODEL_HISTORY_FEATURE_COLUMNS]], axis=1)
+        if feature_version in {"v5", "v8"}:
+            from features.team_history_features import MATCH_STATS_HISTORY_FEATURE_COLUMNS
+
+            X = pd.concat([X, history[MATCH_STATS_HISTORY_FEATURE_COLUMNS]], axis=1)
+        if feature_version in {"v6", "v7", "v8"}:
+            from features.schedule_features import SCHEDULE_FEATURE_COLUMNS, build_schedule_features
+
+            schedule = build_schedule_features(df)
+            X = pd.concat([X, schedule[SCHEDULE_FEATURE_COLUMNS]], axis=1)
+        if feature_version in {"v7", "v8"}:
+            from features.season_context_features import (
+                SEASON_CONTEXT_FEATURE_COLUMNS,
+                build_season_context_features,
+            )
+
+            season_context = build_season_context_features(df)
+            X = pd.concat([X, season_context[SEASON_CONTEXT_FEATURE_COLUMNS]], axis=1)
 
     X = X.replace([np.inf, -np.inf], np.nan).fillna(0.0)
     feature_names = list(X.columns)
@@ -233,6 +258,31 @@ def build_basic_features(df: pd.DataFrame, *, feature_version: str = DEFAULT_FEA
             ],
             axis=1,
         )
+    if feature_version in {"v4", "v5", "v6", "v7", "v8"}:
+        from features.team_history_features import (
+            MODEL_HISTORY_FEATURE_COLUMNS,
+            build_team_history_features,
+        )
+
+        history = build_team_history_features(df)
+        X = pd.concat([X, history[MODEL_HISTORY_FEATURE_COLUMNS]], axis=1)
+        if feature_version in {"v5", "v8"}:
+            from features.team_history_features import MATCH_STATS_HISTORY_FEATURE_COLUMNS
+
+            X = pd.concat([X, history[MATCH_STATS_HISTORY_FEATURE_COLUMNS]], axis=1)
+        if feature_version in {"v6", "v7", "v8"}:
+            from features.schedule_features import SCHEDULE_FEATURE_COLUMNS, build_schedule_features
+
+            schedule = build_schedule_features(df)
+            X = pd.concat([X, schedule[SCHEDULE_FEATURE_COLUMNS]], axis=1)
+        if feature_version in {"v7", "v8"}:
+            from features.season_context_features import (
+                SEASON_CONTEXT_FEATURE_COLUMNS,
+                build_season_context_features,
+            )
+
+            season_context = build_season_context_features(df)
+            X = pd.concat([X, season_context[SEASON_CONTEXT_FEATURE_COLUMNS]], axis=1)
 
     X = X.replace([np.inf, -np.inf], np.nan).fillna(0.0)
     y = actual

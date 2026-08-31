@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import os
 import sqlite3
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -55,7 +55,7 @@ def upsert_fixtures(conn: sqlite3.Connection, rows: list[dict[str, Any]]) -> int
     if not rows:
         return 0
     init_db(conn)
-    now = datetime.utcnow().isoformat(timespec="seconds") + "Z"
+    now = datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
     values: list[tuple[Any, ...]] = []
     for r in rows:
         values.append(

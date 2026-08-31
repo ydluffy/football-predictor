@@ -39,7 +39,20 @@ def test_run_time_series_cv_writes_results(monkeypatch, tmp_path):
 
     assert settings.eval_cv_results_path.exists()
     assert len(out) == 3
-    assert {"fold", "train_size", "test_size", "model_type", "feature_version", "calibration_method", "brier", "logloss"} <= set(out.columns)
+    assert {
+        "fold",
+        "train_size",
+        "test_size",
+        "model_type",
+        "feature_version",
+        "calibration_method",
+        "brier",
+        "logloss",
+        "market_brier",
+        "market_logloss",
+        "brier_vs_market",
+        "logloss_vs_market",
+    } <= set(out.columns)
     assert out["feature_version"].unique().tolist() == ["v3"]
 
     assert all(out["train_size"].to_numpy() > 0)
@@ -92,3 +105,18 @@ def test_run_time_series_cv_lightgbm_basic(monkeypatch, tmp_path):
     assert settings.eval_cv_results_path.exists()
     assert len(out) == 2
     assert out["model_type"].unique().tolist() == ["lightgbm"]
+
+
+def test_run_time_series_cv_keeps_same_matchday_in_one_fold(monkeypatch, tmp_path):
+    root = tmp_path / "football-predictor"
+    (root / "artifacts" / "eval").mkdir(parents=True, exist_ok=True)
+    monkeypatch.setenv("FOOTBALL_PREDICTOR_ROOT", str(root))
+    get_settings.cache_clear()
+
+    df = _make_df(36)
+    df["date"] = pd.Series(pd.date_range("2025-01-01", periods=12, freq="D").repeat(3)).astype(str)
+    out = run_time_series_cv(df, feature_version="v1", n_splits=3, model_type="logit")
+
+    assert len(out) == 3
+    assert all(pd.to_datetime(out["train_end_date"]) < pd.to_datetime(out["test_start_date"]))
+    assert out["test_size"].tolist() == [9, 9, 9]

@@ -9,9 +9,24 @@
     "Date": "date",
     "HomeTeam": "home_team",
     "AwayTeam": "away_team",
+    "FTHG": "home_goals",
+    "FTAG": "away_goals",
+    "HS": "home_shots",
+    "AS": "away_shots",
+    "HST": "home_shots_on_target",
+    "AST": "away_shots_on_target",
+    "HC": "home_corners",
+    "AC": "away_corners",
+    "HY": "home_yellow_cards",
+    "AY": "away_yellow_cards",
+    "HR": "home_red_cards",
+    "AR": "away_red_cards",
     "FTR": "actual_result",
     "B365H": "odds_home",
     "B365D": "odds_draw",
-    "B365A": "odds_away"
+    "B365A": "odds_away",
+    "B365CH": "odds_home_last",
+    "B365CD": "odds_draw_last",
+    "B365CA": "odds_away_last"
   }
 }

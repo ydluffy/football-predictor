@@ -1,0 +1,2 @@
+record_id,match_id,competition_id,kickoff_at,observed_at,source,source_url,license_status,team,signal_type,subject,status,numeric_value,confidence,confirmed,expires_at,notes
+example-absence,example-match,ENG_PREMIER_LEAGUE,2026-08-15T14:00:00Z,2026-08-15T10:00:00Z,manual_verified,https://example.invalid/source,manual_verified,Example FC,absence,Example Player,injured,1.5,0.9,1,2026-08-15T14:00:00Z,Replace with verified evidence.

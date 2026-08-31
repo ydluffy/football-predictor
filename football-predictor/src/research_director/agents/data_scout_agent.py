@@ -308,8 +308,9 @@ class DataScoutAgent(AgentBase):
         validation_path = run_dir / "dataset_validation.json"
         missing_path = run_dir / "dataset_missing_report.csv"
         report = validate_matches_dataset(df, feature_version, output_json_path=str(validation_path), missing_report_csv_path=str(missing_path))
-        data_quality_ok = bool(len(report.get("required_fields_missing") or []) == 0)
+        data_quality_ok = bool(report.get("is_trainable", len(report.get("required_fields_missing") or []) == 0))
         required_fields_missing = list(report.get("required_fields_missing") or [])
+        required_field_null_counts = dict(report.get("required_field_null_counts") or {})
         row_count = int(len(df))
 
         finished = self._now()
@@ -324,7 +325,7 @@ class DataScoutAgent(AgentBase):
         artifacts.append(StepArtifact(name="dataset_validation", path=str(validation_path), artifact_type="json", metadata={}))
         artifacts.append(StepArtifact(name="dataset_missing_report", path=str(missing_path), artifact_type="csv", metadata={}))
 
-        if data_mode == "real" and (len(required_fields_missing) > 0):
+        if data_mode == "real" and not data_quality_ok:
             return StepResult(
                 status="review_required",
                 summary="required_fields_missing",
@@ -340,6 +341,7 @@ class DataScoutAgent(AgentBase):
                     "missing_report_path": str(run_dir / "import_missing_report.csv") if (run_dir / "import_missing_report.csv").exists() else str(missing_path),
                     "row_count": row_count,
                     "required_fields_missing": required_fields_missing,
+                    "required_field_null_counts": required_field_null_counts,
                     "error_message": "real 模式数据缺少关键字段，需人工检查 mapping 或源数据",
                 },
             )
@@ -358,6 +360,7 @@ class DataScoutAgent(AgentBase):
                 "missing_report_path": str(run_dir / "import_missing_report.csv") if (run_dir / "import_missing_report.csv").exists() else str(missing_path),
                 "row_count": row_count,
                 "required_fields_missing": required_fields_missing,
+                "required_field_null_counts": required_field_null_counts,
             },
         )
 

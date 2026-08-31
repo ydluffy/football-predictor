@@ -18,6 +18,10 @@ def _extract_open_last(df: pd.DataFrame, base: str) -> tuple[pd.Series, pd.Serie
         return _num(df, open_col), _num(df, last_col)
     if open_col in df.columns and close_col in df.columns:
         return _num(df, open_col), _num(df, close_col)
+    if base in df.columns and last_col in df.columns:
+        return _num(df, base), _num(df, last_col)
+    if base in df.columns and close_col in df.columns:
+        return _num(df, base), _num(df, close_col)
 
     t_cols = [c for c in df.columns if c.startswith(f"{base}_t")]
     if t_cols:
@@ -107,4 +111,3 @@ def build_kelly_proxy_features(df: pd.DataFrame) -> pd.DataFrame:
 
     out = out.replace([np.inf, -np.inf], np.nan).fillna(0.0)
     return out
-

@@ -12,6 +12,8 @@ def _num(df: pd.DataFrame, col: str) -> pd.Series:
 
 def _delta_open_last(df: pd.DataFrame, base: str) -> pd.Series:
     o = _num(df, f"{base}_open")
+    if o.isna().all():
+        o = _num(df, base)
     l = _num(df, f"{base}_last")
     valid = o.notna() & l.notna()
     return (l - o).where(valid, 0.0)
@@ -19,6 +21,8 @@ def _delta_open_last(df: pd.DataFrame, base: str) -> pd.Series:
 
 def _pct_open_last(df: pd.DataFrame, base: str, delta: pd.Series) -> pd.Series:
     o = _num(df, f"{base}_open")
+    if o.isna().all():
+        o = _num(df, base)
     valid = o.notna() & (o != 0.0)
     return (delta / o.where(valid, np.nan)).where(valid, 0.0)
 
@@ -47,6 +51,8 @@ def build_odds_sequence_features(df: pd.DataFrame) -> pd.DataFrame:
     valids: dict[str, pd.Series] = {}
     for key, base in bases.items():
         o = _num(df, f"{base}_open")
+        if o.isna().all():
+            o = _num(df, base)
         l = _num(df, f"{base}_last")
         valid = o.notna() & l.notna()
         valids[key] = valid
@@ -67,4 +73,3 @@ def build_odds_sequence_features(df: pd.DataFrame) -> pd.DataFrame:
 
     out = out.replace([np.inf, -np.inf], np.nan).fillna(0.0)
     return out
-

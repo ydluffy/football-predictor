@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import type { FixtureListRow } from "@/lib/databaseTypes";
 
 type ApiFootballOddsResponse = {
   response?: Array<{
@@ -56,6 +57,7 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "invalid json from API-Football" }, { status: 502 });
   }
 
+  const fixtureRows = (fixtures || []) as FixtureListRow[];
   const updates: Array<{ fixture_id: number; odds_home: number; odds_draw: number; odds_away: number; bookmaker?: string }> = [];
   const fxNorm = (s?: string | null) => normalizeName(s);
 
@@ -64,7 +66,7 @@ export async function POST(req: Request) {
     const awayName = fxNorm(item.teams?.away?.name);
     if (!homeName || !awayName) continue;
     // Find our fixture by fuzzy matching team names
-    const candidates = (fixtures || []).filter((f: any) => {
+    const candidates = fixtureRows.filter((f) => {
       const h = fxNorm(f.home_team_name);
       const a = fxNorm(f.away_team_name);
       return h && a && (h === homeName || h.includes(homeName) || homeName.includes(h)) && (a === awayName || a.includes(awayName) || awayName.includes(a));

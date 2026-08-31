@@ -1,0 +1,34 @@
+{
+  "data": {
+    "timestamp_column": "snapshot_at",
+    "required_columns": [
+      "match_id",
+      "date",
+      "snapshot_at",
+      "league",
+      "home_team",
+      "away_team",
+      "odds_home",
+      "odds_draw",
+      "odds_away"
+    ],
+    "odds_columns": ["odds_home", "odds_draw", "odds_away"],
+    "max_data_age_hours": 36,
+    "max_required_missing_rate": 0.02,
+    "max_column_missing_rate": 0.05,
+    "min_odds_coverage_rate": 0.95
+  },
+  "drift": {
+    "features": ["odds_home", "odds_draw", "odds_away", "xg_home", "xg_away"],
+    "psi_bins": 10,
+    "feature_psi_threshold": 0.1,
+    "max_feature_psi": 0.25,
+    "max_drifted_feature_rate": 0.2
+  },
+  "calibration": {
+    "max_brier": 0.66,
+    "max_reliability_gap": 0.15,
+    "max_brier_delta": 0.01,
+    "min_samples": 50
+  }
+}

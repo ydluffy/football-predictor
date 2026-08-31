@@ -22,6 +22,7 @@ class ModelTrainerAgent(AgentBase):
             "calibration": str(context.get("calibration") or "none"),
             "cv": str(context.get("cv") or "false"),
             "use_verifier": str(context.get("use_verifier") or "false"),
+            "data_path": context.get("matches_path") or context.get("data_path"),
             "isolate": bool(context.get("isolate", True)),
         }
 
@@ -47,6 +48,7 @@ class ModelTrainerAgent(AgentBase):
         calibration = str(context.get("calibration") or "none")
         cv = str(context.get("cv") or "false")
         use_verifier = str(context.get("use_verifier") or "false")
+        data_path = context.get("data_path") or context.get("matches_path")
         isolate = bool(context.get("isolate", True))
 
         run_dir = Path(str(context.get("run_dir") or (s.research_director_runs_dir / str(context["run_id"]))))
@@ -71,6 +73,8 @@ class ModelTrainerAgent(AgentBase):
             "--use-verifier",
             use_verifier,
         ]
+        if data_path:
+            cmd.extend(["--data-path", str(data_path)])
         proc = subprocess.run(cmd, cwd=str(code_root), env=env, capture_output=True, text=True)
 
         finished = self._now()
@@ -127,6 +131,7 @@ class ModelTrainerAgent(AgentBase):
                 "calibration": calibration,
                 "cv": cv,
                 "use_verifier": use_verifier,
+                "data_path": str(data_path) if data_path else None,
                 "isolate": bool(isolate),
                 "train_metrics": parsed_metrics,
             },

@@ -49,7 +49,7 @@ def main() -> None:
     parser.add_argument("--registry-limit", type=int, default=5)
     parser.add_argument("--workflow", choices=["daily_prediction", "post_match_learning", "candidate_model_upgrade", "candidate_upgrade"], default="")
     parser.add_argument("--model-type", choices=["logit", "lightgbm", "stacking", "stacking_oof"], default="logit")
-    parser.add_argument("--feature-version", choices=["v1", "v2", "v3"], default="v3")
+    parser.add_argument("--feature-version", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"], default="v3")
     parser.add_argument("--calibration", choices=["none", "sigmoid", "isotonic"], default="none")
     parser.add_argument("--use-verifier", choices=["true", "false"], default="false")
     parser.add_argument("--data-mode", choices=["mock", "real"], default="mock")
@@ -57,6 +57,9 @@ def main() -> None:
     parser.add_argument("--run-id", default="")
     parser.add_argument("--resume", choices=["true", "false"], default="false")
     parser.add_argument("--max-retries", type=int, default=0)
+    parser.add_argument("--require-cross-season-evidence", choices=["true", "false"], default="true")
+    parser.add_argument("--cross-season-logloss-difference", type=float, default=None)
+    parser.add_argument("--bootstrap-ci95-high", type=float, default=None)
     parser.add_argument("--today-matches-path", default="")
     parser.add_argument("--matches-path", default="")
     parser.add_argument("--raw-matches-csv", default="")
@@ -97,7 +100,12 @@ def main() -> None:
         "use_verifier": args.use_verifier == "true",
         "max_retries": int(args.max_retries),
         "data_mode": args.data_mode,
+        "require_cross_season_evidence": args.require_cross_season_evidence == "true",
     }
+    if args.cross_season_logloss_difference is not None:
+        ctx["cross_season_logloss_difference"] = float(args.cross_season_logloss_difference)
+    if args.bootstrap_ci95_high is not None:
+        ctx["bootstrap_ci95_high"] = float(args.bootstrap_ci95_high)
     if args.today_matches_path:
         ctx["today_matches_path"] = args.today_matches_path
     if args.matches_path:
@@ -119,8 +127,10 @@ def main() -> None:
                 default_mapping = s.data_mappings_dir / "example_mapping_minimal.json"
             elif args.feature_version == "v2":
                 default_mapping = s.data_mappings_dir / "example_mapping_v2.json"
-            else:
+            elif args.feature_version == "v3":
                 default_mapping = s.data_mappings_dir / "example_mapping_v3.json"
+            else:
+                default_mapping = s.data_mappings_dir / "football_data_mapping.json"
             if default_mapping.exists():
                 ctx["mapping_path"] = str(default_mapping)
 

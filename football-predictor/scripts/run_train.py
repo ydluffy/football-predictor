@@ -17,10 +17,25 @@ from orchestrator.predict_pipeline import run_pipeline
 from models.artifact_manifest import build_manifest, default_manifest_path_for_artifact, write_manifest
 
 
+def _resolve_data_path(*, settings, explicit_path: str) -> str:
+    if explicit_path:
+        return explicit_path
+
+    raw_sample = settings.data_raw_dir / "sample_matches.csv"
+    if raw_sample.exists():
+        return str(raw_sample)
+
+    template_sample = settings.project_root / "data" / "templates" / "sample_matches.csv"
+    if template_sample.exists():
+        return str(template_sample)
+
+    return str(raw_sample)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-type", choices=["logit", "lightgbm", "stacking", "stacking_oof"], default="logit")
-    parser.add_argument("--feature-version", choices=["v1", "v2", "v3"], default="v2")
+    parser.add_argument("--feature-version", choices=["v1", "v2", "v3", "v4", "v5", "v6", "v7", "v8"], default="v2")
     parser.add_argument("--calibration", choices=["none", "sigmoid", "isotonic"], default="none")
     parser.add_argument("--cv", choices=["false", "true"], default="false")
     parser.add_argument("--use-verifier", choices=["false", "true"], default="false")
@@ -30,10 +45,11 @@ def main() -> None:
     settings = get_settings()
     cv = args.cv == "true"
     use_verifier = args.use_verifier == "true"
+    data_path = _resolve_data_path(settings=settings, explicit_path=args.data_path)
 
     if not cv:
         df = run_pipeline(
-            input_dataset_path=(args.data_path if args.data_path else None),
+            input_dataset_path=data_path,
             feature_version=args.feature_version,
             calibration_method=args.calibration,
             model_type=args.model_type,
@@ -108,18 +124,19 @@ def main() -> None:
     if use_verifier:
         print("cv=true 当前不启用 verifier；仅在 cv=false 的单次评估模式下支持 --use-verifier true")
 
-    try:
-        data_path = "data/raw/sample_matches.csv"
-        df = load_matches_with_meta(
-            data_path,
-            extra_columns=["date", "league", "xg_home", "xg_away", "injury_flag", "line_move"],
-        )
-    except FileNotFoundError:
-        fallback = settings.project_root.parent / "data" / "sample_matches.csv"
-        df = load_matches_with_meta(
-            str(fallback),
-            extra_columns=["date", "league", "xg_home", "xg_away", "injury_flag", "line_move"],
-        )
+    df = load_matches_with_meta(
+        data_path,
+        extra_columns=[
+            "date",
+            "league",
+            "xg_home",
+            "xg_away",
+            "injury_flag",
+            "line_move",
+            "home_goals",
+            "away_goals",
+        ],
+    )
 
     out = run_time_series_cv(df, feature_version=args.feature_version, n_splits=3, model_type=args.model_type, calibration_method=args.calibration)
     print(str(settings.eval_cv_results_path))
