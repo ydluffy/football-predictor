@@ -2,8 +2,7 @@
 
 from pathlib import Path
 
-from world_cup.daily_pipeline import build_daily_pipeline_steps
-from world_cup.daily_pipeline import evaluate_sporttery_quality_gate
+from world_cup.daily_pipeline import build_daily_pipeline_steps, evaluate_sporttery_quality_gate
 
 
 def test_daily_pipeline_builds_offline_steps_in_order():
@@ -99,7 +98,7 @@ def test_daily_pipeline_can_refresh_sporttery_before_predictions():
     )
     assert (
         prediction_step.command[prediction_step.command.index("--sporttery-markets") + 1]
-        == "data\\manual\\sporttery_handicap_markets_2026-06-26.csv"
+        == str(Path("data") / "manual" / "sporttery_handicap_markets_2026-06-26.csv")
     )
 
 
