@@ -16,6 +16,18 @@ See
 [`football-predictor/docs/repository_governance.md`](football-predictor/docs/repository_governance.md)
 for repository boundaries and commit conventions.
 
+For collaboration and cloud-development workflow, see:
+
+- [`docs/collaboration_playbook.md`](docs/collaboration_playbook.md)
+- [`docs/github_workflow.md`](docs/github_workflow.md)
+- [`docs/database_and_environment.md`](docs/database_and_environment.md)
+- [`docs/cloud_computer_setup.md`](docs/cloud_computer_setup.md)
+- [`docs/data_sync_and_sources.md`](docs/data_sync_and_sources.md)
+- [`docs/colab_quickstart.md`](docs/colab_quickstart.md)
+- [`docs/database_bootstrap.md`](docs/database_bootstrap.md)
+- [`docs/agent_handoff.md`](docs/agent_handoff.md)
+- [`docs/task_board.md`](docs/task_board.md)
+
 The repository root is not an installable Python package. Run Python commands
 from `football-predictor/`, or use the root command wrapper below. This avoids
 accidentally importing the retired prototype that previously lived under the
