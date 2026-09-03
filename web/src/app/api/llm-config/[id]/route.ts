@@ -28,7 +28,7 @@ export async function PUT(req: Request, context: { params: Promise<{ id: string 
     patch.base_url = validation.baseUrl;
   }
   if (typeof body.model === "string") patch.model = body.model.trim();
-  if (typeof body.api_key === "string" && body.api_key.trim()) {
+  if (typeof body.api_key === "string" && body.api_key.trim()) { // pragma: allowlist secret
     patch.encrypted_api_key = encryptToJson(body.api_key.trim());
   }
 
