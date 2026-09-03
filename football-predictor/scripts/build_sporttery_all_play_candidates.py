@@ -111,24 +111,26 @@ def _pick(odds: dict[str, float], priorities: list[str], count: int) -> list[tup
 def _candidate_rows(candidates: list[Candidate], budget: float) -> pd.DataFrame:
     rows = []
     for candidate in candidates:
-        payout_min, payout_max = candidate.payout_range(budget)
-        total_stake = candidate.total_stake(budget)
+        virtual_budget = candidate.bet_count * BASE_BET_UNIT
+        payout_min, payout_max = candidate.payout_range(virtual_budget)
+        total_stake = candidate.total_stake(virtual_budget)
         rows.append(
             {
                 "plan_type": candidate.plan_type,
                 "play_type": candidate.play_type,
                 "title": candidate.title,
-                "budget": budget,
+                "budget": virtual_budget,
                 "bet_count": candidate.bet_count,
-                "multiplier": candidate.multiplier(budget),
+                "multiplier": candidate.multiplier(virtual_budget),
                 "total_stake": round(total_stake, 2),
-                "unused_budget": round(budget - total_stake, 2),
+                "unused_budget": round(virtual_budget - total_stake, 2),
                 "estimated_payout_min": round(payout_min, 2),
                 "estimated_payout_max": round(payout_max, 2),
                 "estimated_net_min": round(payout_min - total_stake, 2),
                 "estimated_net_max": round(payout_max - total_stake, 2),
                 "selections": " / ".join(f"{name}@{odd:g}" for name, odd in candidate.selections),
                 "note": candidate.note,
+                "is_shadow": True,
             }
         )
     return pd.DataFrame(rows)
@@ -233,8 +235,8 @@ def main() -> None:
     audit_output.parent.mkdir(parents=True, exist_ok=True)
     base_frame.to_csv(base_output, index=False, encoding="utf-8-sig")
     play_frame.to_csv(play_output, index=False, encoding="utf-8-sig")
-    fixed_shadow_frame = base_frame[base_frame["plan_type"].astype(str).eq("固定赔率观察")].copy() if not base_frame.empty else base_frame
-    production_frame = base_frame[~base_frame["plan_type"].astype(str).eq("固定赔率观察")].copy() if not base_frame.empty else base_frame
+    shadow_frame = base_frame[base_frame["is_shadow"].astype(bool)].copy() if not base_frame.empty else base_frame
+    production_frame = base_frame[~base_frame["is_shadow"].astype(bool)].copy() if not base_frame.empty else base_frame
 
     lines = [
         "# 体彩全玩法候选方案",
@@ -245,18 +247,18 @@ def main() -> None:
         "",
         _markdown_table(production_frame[["plan_type", "title", "stake", "bet_count", "total_stake", "estimated_payout_min", "estimated_payout_max", "selections"]]) if not production_frame.empty else "暂无。",
         "",
-        "## 固定赔率影子方案（不入账）",
+        "## 胜平负/让球影子方案（不入账）",
         "",
-        _markdown_table(fixed_shadow_frame[["plan_type", "title", "total_stake", "estimated_odds_min", "estimated_payout_min", "selections", "risk_notes"]]) if not fixed_shadow_frame.empty else "本次没有总赔率落在6.00–10.00的低风险组合。",
+        _markdown_table(shadow_frame[["plan_type", "title", "total_stake", "estimated_odds_min", "estimated_payout_min", "selections", "risk_notes"]]) if not shadow_frame.empty else "本次没有合格影子方案。",
         "",
-        "## 总进球/比分/半全场候选",
+        "## 总进球/比分/半全场影子候选",
         "",
         _markdown_table(play_frame[["plan_type", "title", "budget", "bet_count", "multiplier", "total_stake", "estimated_payout_min", "estimated_payout_max", "selections", "note"]]) if not play_frame.empty else "暂无。",
         "",
         "## 规则提醒",
         "",
         "- 同一场比赛的不同玩法不能放进同一张混合过关方案。",
-        "- 每个方案预算按100元以内控制，按2元基础注和整数倍计算。",
+        "- 生产方案维持既有预算上限；所有新玩法只按2元基础注做虚拟观察，不增加投入。",
         "- 所有足球玩法均按90分钟含伤停补时结算。",
         "- 固定赔率影子方案采用2元虚拟注，必须随回复展示，但不得写入真实投注台账。",
     ]

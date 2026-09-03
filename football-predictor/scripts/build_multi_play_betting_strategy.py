@@ -134,6 +134,8 @@ def main() -> None:
         "input_rows": int(len(markets)),
         "match_rows": int(len(matches_frame)),
         "plan_rows": int(len(plans_frame)),
+        "production_plan_rows": int((~plans_frame.get("is_shadow", pd.Series(dtype=bool)).astype(bool)).sum()) if not plans_frame.empty else 0,
+        "shadow_plan_rows": int(plans_frame.get("is_shadow", pd.Series(dtype=bool)).astype(bool).sum()) if not plans_frame.empty else 0,
         "fixed_odds": {
             "minimum": args.fixed_odds_min,
             "maximum": args.fixed_odds_max,
