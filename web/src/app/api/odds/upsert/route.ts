@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireSupabaseAdmin } from "@/lib/requireSupabaseAdmin";
 
 export async function POST(req: Request) {
   try {
@@ -9,7 +9,8 @@ export async function POST(req: Request) {
     if (!body?.odds?.length) {
       return NextResponse.json({ error: "missing odds[]" }, { status: 400 });
     }
-    const sb = supabaseAdmin();
+    const { sb, response } = requireSupabaseAdmin(req);
+    if (!sb) return response;
     const { error } = await sb.from("odds").upsert(
       body.odds.map((o) => ({
         fixture_id: o.fixture_id,
@@ -26,4 +27,3 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: String(e) }, { status: 400 });
   }
 }
-

@@ -46,3 +46,5 @@ node_modules/
 # Local IDE/agent state and personal evidence are not project source.
 /.trae/
 /投注方案/
+/.supabase_home/
+/supabase/.temp/

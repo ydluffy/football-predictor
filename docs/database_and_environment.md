@@ -79,6 +79,11 @@ Colab 和云端训练环境负责临时训练与实验，不直接作为业务�
 
 用于 `web/`：
 
+- `WORKBENCH_ADMIN_USER`、`WORKBENCH_ADMIN_PASSWORD`：生产环境必填，保护总控、系统、聊天和写接口
+- `APP_ENCRYPTION_KEY`：启用 BYOK 时必填，用于服务端加密模型密钥
+- `LLM_ALLOWED_HOSTS`：可选，逗号分隔的额外可信模型主机
+- `ALLOW_LOCAL_ARTIFACTS`：只允许本地临时调试设为 `true`，Vercel 不得开启
+
 - `SUPABASE_URL`
 - `SUPABASE_SERVICE_ROLE_KEY`
 - `FOOTBALL_DATA_API_KEY`

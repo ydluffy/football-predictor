@@ -40,6 +40,7 @@ export type PredictionApiItem = {
   confidence: number;
   lambda_home: number;
   lambda_away: number;
+  sporttery_handicap?: number | null;
   p_over_2_5?: number;
   p_under_2_5?: number;
   p_btts_yes?: number;
