@@ -21,9 +21,6 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/controller/:path*",
-    "/setup/:path*",
-    "/chat/:path*",
     "/api/automation/:path*",
     "/api/controller/:path*",
     "/api/llm-config/:path*",

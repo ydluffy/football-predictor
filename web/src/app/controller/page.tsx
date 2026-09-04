@@ -3,7 +3,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { ActionButton, PageIntro, StatusBadge, SurfaceCard } from "@/components/Workbench";
 import { ChatPanel } from "@/components/ChatPanel";
+import { WorkbenchLoginInline } from "@/components/WorkbenchLoginInline";
 import { getShanghaiToday } from "@/lib/time";
+import { workbenchFetch } from "@/lib/workbenchClientAuth";
 
 type ControllerStatusResponse = {
   controller_state: any | null;
@@ -38,6 +40,7 @@ export default function ControllerPage() {
   const [msg, setMsg] = useState<string>("");
   const [salesDay, setSalesDay] = useState(getShanghaiToday());
   const [data, setData] = useState<ControllerStatusResponse | null>(null);
+  const [needAuth, setNeedAuth] = useState(false);
 
   const [llmLoading, setLlmLoading] = useState(false);
   const [llmMsg, setLlmMsg] = useState<string>("");
@@ -92,8 +95,12 @@ export default function ControllerPage() {
     setLoading(true);
     setMsg("");
     try {
-      const r = await fetch(`/api/automation/status?sales_day=${encodeURIComponent(targetDay)}`, { cache: "no-store" });
+      const r = await workbenchFetch(`/api/automation/status?sales_day=${encodeURIComponent(targetDay)}`, { cache: "no-store" });
       const raw = await r.text();
+      if (r.status === 401) {
+        setNeedAuth(true);
+        throw new Error("需要工作台管理员身份认证（请先在本页完成登录）");
+      }
       const j = (raw && raw.trim().startsWith("{") ? JSON.parse(raw) : null) as ControllerStatusResponse | null;
       if (!r.ok) throw new Error((j as any)?.error || `HTTP ${r.status}: ${raw.slice(0, 120)}`);
       if (!j) throw new Error(`非 JSON 响应：${raw.slice(0, 120)}`);
@@ -109,12 +116,16 @@ export default function ControllerPage() {
     setLoading(true);
     setMsg("");
     try {
-      const r = await fetch("/api/automation/sync", {
+      const r = await workbenchFetch("/api/automation/sync", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sales_days: days }),
       });
       const t = await r.text();
+      if (r.status === 401) {
+        setNeedAuth(true);
+        throw new Error("需要工作台管理员身份认证（请先在本页完成登录）");
+      }
       if (!r.ok) throw new Error(t || `HTTP ${r.status}`);
       setMsg(`✅ 同步完成：${t}`);
       await refresh(days[0] || salesDay);
@@ -135,8 +146,12 @@ export default function ControllerPage() {
     setLlmLoading(true);
     setLlmMsg("");
     try {
-      const r = await fetch("/api/llm-config", { cache: "no-store" });
+      const r = await workbenchFetch("/api/llm-config", { cache: "no-store" });
       const raw = await r.text();
+      if (r.status === 401) {
+        setNeedAuth(true);
+        throw new Error("需要工作台管理员身份认证（请先在本页完成登录）");
+      }
       const j = (raw && raw.trim().startsWith("{") ? JSON.parse(raw) : null) as LlmConfigListResponse | null;
       if (!r.ok) throw new Error((j as any)?.error || `HTTP ${r.status}: ${raw.slice(0, 120)}`);
       if (!j) throw new Error(`非 JSON 响应：${raw.slice(0, 120)}`);
@@ -153,11 +168,15 @@ export default function ControllerPage() {
     setLlmLoading(true);
     setLlmMsg("");
     try {
-      const r = await fetch("/api/llm-config/active", {
+      const r = await workbenchFetch("/api/llm-config/active", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ active_config_id: id }),
       });
+      if (r.status === 401) {
+        setNeedAuth(true);
+        throw new Error("需要工作台管理员身份认证（请先在本页完成登录）");
+      }
       const j = (await r.json().catch(() => ({}))) as any;
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       setLlmActiveId(id);
@@ -173,11 +192,15 @@ export default function ControllerPage() {
     setLlmLoading(true);
     setLlmMsg("");
     try {
-      const r = await fetch("/api/llm-config", {
+      const r = await workbenchFetch("/api/llm-config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(newCfg),
       });
+      if (r.status === 401) {
+        setNeedAuth(true);
+        throw new Error("需要工作台管理员身份认证（请先在本页完成登录）");
+      }
       const j = (await r.json().catch(() => ({}))) as any;
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       setNewCfg({ label: "", base_url: "", model: "", api_key: "", provider: "ark" });
@@ -195,7 +218,11 @@ export default function ControllerPage() {
     setLlmLoading(true);
     setLlmMsg("");
     try {
-      const r = await fetch(`/api/llm-config/${encodeURIComponent(id)}`, { method: "DELETE" });
+      const r = await workbenchFetch(`/api/llm-config/${encodeURIComponent(id)}`, { method: "DELETE" });
+      if (r.status === 401) {
+        setNeedAuth(true);
+        throw new Error("需要工作台管理员身份认证（请先在本页完成登录）");
+      }
       const j = (await r.json().catch(() => ({}))) as any;
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       setLlmMsg("✅ 已删除模型配置。");
@@ -211,7 +238,11 @@ export default function ControllerPage() {
     setLlmLoading(true);
     setLlmMsg("");
     try {
-      const r = await fetch("/api/llm-config/test", { method: "POST" });
+      const r = await workbenchFetch("/api/llm-config/test", { method: "POST" });
+      if (r.status === 401) {
+        setNeedAuth(true);
+        throw new Error("需要工作台管理员身份认证（请先在本页完成登录）");
+      }
       const j = (await r.json().catch(() => ({}))) as any;
       setLlmMsg(j?.ok ? `✅ 测试通过：${j.latency_ms}ms` : `⚠️ 测试未通过：${j?.error || j?.status || "unknown"}`);
     } catch (e) {
@@ -272,6 +303,16 @@ export default function ControllerPage() {
         title="总控助手"
         description="把“同步 + 状态摘要 + 解释建议”收进一个卡片里。需要更多细节时再展开查看。"
       />
+
+      {needAuth ? (
+        <WorkbenchLoginInline
+          onSuccess={() => {
+            setNeedAuth(false);
+            refresh();
+            refreshLlmConfigs();
+          }}
+        />
+      ) : null}
 
       {msg ? (
         <section className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700 shadow-sm">

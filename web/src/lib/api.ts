@@ -7,6 +7,8 @@ export type ChatResponse = {
   content: string;
 };
 
+import { workbenchFetch } from "@/lib/workbenchClientAuth";
+
 export type Fixture = {
   fixture_id: number;
   competition_code?: string | null;
@@ -301,7 +303,7 @@ function apiBase(): string {
 }
 
 export async function postChat(messages: ChatMessage[], context?: ChatContext): Promise<ChatResponse> {
-  const resp = await fetch(`${apiBase()}/api/chat`, {
+  const resp = await workbenchFetch(`${apiBase()}/api/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ messages, context }),
@@ -315,7 +317,7 @@ export async function postChat(messages: ChatMessage[], context?: ChatContext): 
 
 export async function ingestFootballData(dateFrom: string, dateTo: string): Promise<IngestResponse> {
   const url = `${apiBase()}/api/ingest/football-data?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`;
-  const resp = await fetch(url, { method: "POST" });
+  const resp = await workbenchFetch(url, { method: "POST" });
   if (!resp.ok) {
     const txt = await resp.text();
     throw new Error(txt || `HTTP ${resp.status}`);
@@ -325,7 +327,7 @@ export async function ingestFootballData(dateFrom: string, dateTo: string): Prom
 
 export async function getFixtures(date: string): Promise<FixturesResponse> {
   const url = `${apiBase()}/api/fixtures?date=${encodeURIComponent(date)}`;
-  const resp = await fetch(url, { cache: "no-store" });
+  const resp = await workbenchFetch(url, { cache: "no-store" });
   if (!resp.ok) {
     const txt = await resp.text();
     throw new Error(txt || `HTTP ${resp.status}`);
@@ -334,7 +336,7 @@ export async function getFixtures(date: string): Promise<FixturesResponse> {
 }
 
 export async function getPredictionsByDate(date: string): Promise<PredictionsResponse> {
-  const resp = await fetch(`${apiBase()}/api/predictions`, {
+  const resp = await workbenchFetch(`${apiBase()}/api/predictions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ date }),
@@ -347,7 +349,7 @@ export async function getPredictionsByDate(date: string): Promise<PredictionsRes
 }
 
 export async function getFixtureById(fixtureId: number): Promise<FixtureResponse> {
-  const resp = await fetch(`${apiBase()}/api/fixtures/${fixtureId}`, { cache: "no-store" });
+  const resp = await workbenchFetch(`${apiBase()}/api/fixtures/${fixtureId}`, { cache: "no-store" });
   if (!resp.ok) {
     const txt = await resp.text();
     throw new Error(txt || `HTTP ${resp.status}`);
@@ -356,7 +358,7 @@ export async function getFixtureById(fixtureId: number): Promise<FixtureResponse
 }
 
 export async function getPredictionsByFixtureIds(fixtureIds: number[]): Promise<PredictionsResponse> {
-  const resp = await fetch(`${apiBase()}/api/predictions`, {
+  const resp = await workbenchFetch(`${apiBase()}/api/predictions`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ fixture_ids: fixtureIds }),
@@ -369,7 +371,7 @@ export async function getPredictionsByFixtureIds(fixtureIds: number[]): Promise<
 }
 
 export async function getFixtureInsights(fixtureId: number): Promise<FixtureInsightResponse> {
-  const resp = await fetch(`${apiBase()}/api/fixtures/${fixtureId}/insights`, { cache: "no-store" });
+  const resp = await workbenchFetch(`${apiBase()}/api/fixtures/${fixtureId}/insights`, { cache: "no-store" });
   if (!resp.ok) {
     const txt = await resp.text();
     throw new Error(txt || `HTTP ${resp.status}`);
@@ -378,7 +380,7 @@ export async function getFixtureInsights(fixtureId: number): Promise<FixtureInsi
 }
 
 export async function explainFixture(fixtureId: number, mode: "brief" | "detailed" = "brief"): Promise<FixtureExplainResponse> {
-  const resp = await fetch(`${apiBase()}/api/fixtures/${fixtureId}/explain`, {
+  const resp = await workbenchFetch(`${apiBase()}/api/fixtures/${fixtureId}/explain`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ mode }),
@@ -391,7 +393,7 @@ export async function explainFixture(fixtureId: number, mode: "brief" | "detaile
 }
 
 export async function listFixtureExplanations(fixtureId: number): Promise<FixtureExplanationListResponse> {
-  const resp = await fetch(`${apiBase()}/api/fixtures/${fixtureId}/explanations`, { cache: "no-store" });
+  const resp = await workbenchFetch(`${apiBase()}/api/fixtures/${fixtureId}/explanations`, { cache: "no-store" });
   if (!resp.ok) {
     const txt = await resp.text();
     throw new Error(txt || `HTTP ${resp.status}`);
@@ -403,7 +405,7 @@ export async function saveFixtureExplanation(
   fixtureId: number,
   payload: { mode: "brief" | "detailed"; content: string; source?: string; meta?: unknown },
 ): Promise<{ item: FixtureExplanationItem }> {
-  const resp = await fetch(`${apiBase()}/api/fixtures/${fixtureId}/explanations`, {
+  const resp = await workbenchFetch(`${apiBase()}/api/fixtures/${fixtureId}/explanations`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
@@ -416,7 +418,7 @@ export async function saveFixtureExplanation(
 }
 
 export async function getMarketIntel(fixtures: Fixture[]): Promise<MarketIntelResponse> {
-  const resp = await fetch(`${apiBase()}/api/market-intel`, {
+  const resp = await workbenchFetch(`${apiBase()}/api/market-intel`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -438,7 +440,7 @@ export async function getMarketIntel(fixtures: Fixture[]): Promise<MarketIntelRe
 }
 
 export async function getReviews(): Promise<ReviewsResponse> {
-  const resp = await fetch(`${apiBase()}/api/reviews`, { cache: "no-store" });
+  const resp = await workbenchFetch(`${apiBase()}/api/reviews`, { cache: "no-store" });
   if (!resp.ok) {
     const txt = await resp.text();
     throw new Error(txt || `HTTP ${resp.status}`);

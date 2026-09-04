@@ -10,7 +10,9 @@ import {
   StatusBadge,
   SurfaceCard,
 } from "@/components/Workbench";
+import { WorkbenchLoginInline } from "@/components/WorkbenchLoginInline";
 import { getShanghaiToday } from "@/lib/time";
+import { workbenchFetch } from "@/lib/workbenchClientAuth";
 
 type StatusResponse = {
   env: {
@@ -42,6 +44,7 @@ export default function SetupPage() {
   const [status, setStatus] = useState<StatusResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [msg, setMsg] = useState<string>("");
+  const [needAuth, setNeedAuth] = useState(false);
   const [dateFrom, setDateFrom] = useState(getShanghaiToday());
   const [dateTo, setDateTo] = useState(getShanghaiToday());
   const [oddsDate, setOddsDate] = useState(getShanghaiToday());
@@ -87,10 +90,15 @@ export default function SetupPage() {
     setLoading(true);
     setMsg("");
     try {
-      const r = await fetch(`/api/ingest/football-data?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`,
-        { method: "POST" }
+      const r = await workbenchFetch(
+        `/api/ingest/football-data?date_from=${encodeURIComponent(dateFrom)}&date_to=${encodeURIComponent(dateTo)}`,
+        { method: "POST" },
       );
       const t = await r.text();
+      if (r.status === 401) {
+        setNeedAuth(true);
+        throw new Error("需要工作台管理员身份认证（请先在本页完成登录）");
+      }
       if (!r.ok) throw new Error(t || `HTTP ${r.status}`);
       setMsg(`✅ 导入成功：${t}`);
       await refresh();
@@ -106,8 +114,12 @@ export default function SetupPage() {
     setMsg("");
     try {
       const qs = new URLSearchParams({ date: oddsDate });
-      const r = await fetch(`/api/ingest/odds?${qs.toString()}`, { method: "POST" });
+      const r = await workbenchFetch(`/api/ingest/odds?${qs.toString()}`, { method: "POST" });
       const t = await r.text();
+      if (r.status === 401) {
+        setNeedAuth(true);
+        throw new Error("需要工作台管理员身份认证（请先在本页完成登录）");
+      }
       if (!r.ok) throw new Error(t || `HTTP ${r.status}`);
       setMsg(`✅ 赔率拉取成功：${t}`);
     } catch (e) {
@@ -121,12 +133,16 @@ export default function SetupPage() {
     setLoading(true);
     setMsg("");
     try {
-      const r = await fetch("/api/predictions/snapshot", {
+      const r = await workbenchFetch("/api/predictions/snapshot", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: snapshotDate }),
       });
       const t = await r.text();
+      if (r.status === 401) {
+        setNeedAuth(true);
+        throw new Error("需要工作台管理员身份认证（请先在本页完成登录）");
+      }
       if (!r.ok) throw new Error(t || `HTTP ${r.status}`);
       setMsg(`✅ 预测快照已写入：${t}`);
     } catch (e) {
@@ -142,8 +158,12 @@ export default function SetupPage() {
     setBtResult(null);
     try {
       const url = `/api/backtest?date_from=${encodeURIComponent(btFrom)}&date_to=${encodeURIComponent(btTo)}`;
-      const r = await fetch(url, { cache: "no-store" });
+      const r = await workbenchFetch(url, { cache: "no-store" });
       const j = (await r.json()) as BacktestResponse;
+      if (r.status === 401) {
+        setNeedAuth(true);
+        throw new Error("需要工作台管理员身份认证（请先在本页完成登录）");
+      }
       if (!r.ok) throw new Error(j?.error || `HTTP ${r.status}`);
       setBtResult(j);
       setMsg("✅ 回测完成（结果已显示在下方）");
@@ -167,6 +187,15 @@ export default function SetupPage() {
           </>
         }
       />
+
+      {needAuth ? (
+        <WorkbenchLoginInline
+          title="管理员登录（用于系统操作）"
+          onSuccess={() => {
+            setNeedAuth(false);
+          }}
+        />
+      ) : null}
 
       <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <MetricCard
