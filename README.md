@@ -66,6 +66,12 @@ GitHub Actions runs two independent jobs on pushes and pull requests:
 - Node.js 22: install from `package-lock.json`, then run ESLint, TypeScript
   checking, dependency audit, and the optimized Next.js production build.
 
+The Web dependency audit runs separately from installation via
+`node ../scripts/npm-audit.mjs` (from `web/`). Unavailable or malformed audit
+responses get at most three attempts with bounded timeouts. High/critical
+findings and exhausted retries fail CI; an unavailable scan never counts as
+clean. Test this policy offline with `node --test scripts/npm-audit.test.mjs`.
+
 ## Dependency and security governance
 
 `football-predictor/requirements.txt` is the generated Python lock and contains
