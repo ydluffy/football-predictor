@@ -1,0 +1,23 @@
+{
+  "effective_from": "2026-09-01",
+  "production": {
+    "budget_change": 0,
+    "max_legs_per_plan": 2,
+    "max_shared_matches_between_safe_and_value": 1,
+    "minimum_spf_probability_without_handicap_model": 0.52,
+    "maximum_spf_odds_without_handicap_model": 1.85,
+    "allow_market_implied_rqspf_in_production": false,
+    "exclude_high_risk_market_signals": true
+  },
+  "shadow": {
+    "base_stake_per_combination": 2,
+    "strategies": [
+      "防冷双选",
+      "让平博高",
+      "强胆+不确定场双选",
+      "固定赔率带",
+      "总进球/比分/半全场"
+    ],
+    "promotion_requires_complete_win_loss_sample": true
+  }
+}

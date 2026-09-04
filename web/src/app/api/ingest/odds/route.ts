@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireSupabaseAdmin } from "@/lib/requireSupabaseAdmin";
 import type { FixtureListRow } from "@/lib/databaseTypes";
 
 type ApiFootballOddsResponse = {
@@ -30,7 +30,8 @@ export async function POST(req: Request) {
   if (!apiKey) return NextResponse.json({ error: "missing API_FOOTBALL_KEY" }, { status: 500 });
 
   // Load fixtures from our DB for the given date window (Asia/Shanghai -> UTC)
-  const sb = supabaseAdmin();
+  const { sb, response } = requireSupabaseAdmin(req);
+  if (!sb) return response;
   const fromLocal = new Date(`${date}T00:00:00+08:00`).toISOString();
   const toLocal = new Date(new Date(`${date}T00:00:00+08:00`).getTime() + 24 * 3600 * 1000).toISOString();
   const { data: fixtures, error: fxErr } = await sb

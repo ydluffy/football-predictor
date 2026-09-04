@@ -76,10 +76,13 @@ jobs:
           cache-dependency-path: web/package-lock.json
 
       - name: Install dependencies
-        run: npm ci
+        run: npm ci --no-audit
+
+      - name: Test audit retry policy
+        run: node --test ../scripts/npm-audit.test.mjs
 
       - name: Audit npm dependencies
-        run: npm audit --audit-level=high
+        run: node ../scripts/npm-audit.mjs
 
       - name: Lint
         run: npm run lint

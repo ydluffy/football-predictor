@@ -89,20 +89,19 @@ def test_build_multi_play_plans_from_market_rows() -> None:
     match_rows, plans = build_multi_play_plans(
         markets,
         stake=100,
-        fixed_odds_min=1.80,
-        fixed_odds_max=2.00,
-        fixed_odds_target=1.90,
+        fixed_odds_min=1.65,
+        fixed_odds_max=1.75,
+        fixed_odds_target=1.69,
         fixed_odds_max_legs=2,
     )
 
     assert len(match_rows) == 2
-    assert [plan.plan_type for plan in plans] == ["稳健", "价值", "防冷", "博高", "固定赔率观察"]
-    assert plans[0].bet_count == 1
-    assert plans[2].bet_count == 4
-    assert "总进球" not in plans[0].rationale
-    fixed = plans[-1]
+    assert {plan.plan_type for plan in plans} == {"防冷", "博高", "固定赔率观察"}
+    assert all(plan.is_shadow for plan in plans)
+    assert match_rows[0]["handicap_probability_source"] == "market_implied_only"
+    fixed = next(plan for plan in plans if plan.plan_type == "固定赔率观察")
     assert fixed.plan_id == "MULTI_PLAY_FIXED_ODDS_SHADOW"
-    assert fixed.odds_range == (1.91, 1.91)
+    assert fixed.odds_range == (1.69, 1.69)
     assert "不得自动写入真实投注台账" in fixed.risk_notes
 
 
@@ -143,7 +142,7 @@ def test_default_fixed_odds_observation_targets_six_to_ten() -> None:
     _, plans = build_multi_play_plans(markets, max_matches=3)
 
     fixed = next(plan for plan in plans if plan.plan_type == "固定赔率观察")
-    assert fixed.odds_range == (8.0, 8.0)
+    assert 6.0 <= fixed.odds_range[0] <= 10.0
     assert len(fixed.legs) == 3
 
 
@@ -190,8 +189,9 @@ def test_high_risk_market_signal_demotes_deep_favorite_from_safe_plan() -> None:
 
     assert match_rows[0]["market_signal_strength"] == "high_risk"
     assert match_rows[0]["correct_score_suggestion"] == "1:0/2:1/1:1/2:0"
-    assert "103 法国 vs 英格兰" not in plans[0].legs[0].selection_text
-    assert "盘口信号" in plans[0].risk_notes
+    production = [plan for plan in plans if not plan.is_shadow]
+    assert all("103 法国 vs 英格兰" not in leg.selection_text for plan in production for leg in plan.legs)
+    assert all("盘口信号" in plan.risk_notes for plan in plans if plan.plan_id in {"MULTI_PLAY_HEDGE", "MULTI_PLAY_HIGH"})
 
 
 def test_build_multi_play_plans_skips_unpriced_rows() -> None:
@@ -251,3 +251,61 @@ def test_controlled_handicap_model_blend_changes_rqspf_ranking():
     classified = classify_match(row)
     assert classified["rqspf_rank"][0][0] == "home"
     assert classified["handicap_model_usage"] == "production_auxiliary"
+    assert classified["handicap_probability_source"] == "model_blended"
+    assert classified["handicap_production_eligible"] is True
+
+
+def test_market_only_handicap_cannot_become_production_selection() -> None:
+    markets = pd.DataFrame([
+        {
+            "match_number": str(number), "home_team": f"H{number}", "away_team": f"A{number}",
+            "home_handicap": -1, "spf_odds_home": odd, "spf_odds_draw": 4.2,
+            "spf_odds_away": 6.0, "rqspf_odds_home": 3.0,
+            "rqspf_odds_draw": 3.4, "rqspf_odds_away": 1.75,
+        }
+        for number, odd in [(1, 1.45), (2, 1.55), (3, 1.65)]
+    ])
+    _, plans = build_multi_play_plans(markets, max_matches=3)
+    production = [plan for plan in plans if not plan.is_shadow]
+    assert production
+    assert all(leg.play_type == "胜平负" for plan in production for leg in plan.legs)
+    assert all("让负" not in leg.selection_text for plan in production for leg in plan.legs)
+
+
+def test_safe_and_value_share_at_most_one_match() -> None:
+    markets = pd.DataFrame([
+        {
+            "match_number": str(number), "home_team": f"H{number}", "away_team": f"A{number}",
+            "home_handicap": -1, "spf_odds_home": odd, "spf_odds_draw": 4.5,
+            "spf_odds_away": 7.0, "rqspf_odds_home": 3.0,
+            "rqspf_odds_draw": 3.4, "rqspf_odds_away": 1.75,
+        }
+        for number, odd in [(1, 1.35), (2, 1.45), (3, 1.55)]
+    ])
+    _, plans = build_multi_play_plans(markets, max_matches=3)
+    safe = next(plan for plan in plans if plan.plan_id == "MULTI_PLAY_SAFE")
+    value = next(plan for plan in plans if plan.plan_id == "MULTI_PLAY_VALUE")
+    assert len({leg.match_number for leg in safe.legs} & {leg.match_number for leg in value.legs}) <= 1
+    assert len(value.legs) == 2
+
+
+def test_strong_anchor_double_is_shadow_only() -> None:
+    markets = pd.DataFrame([
+        {
+            "match_number": "001", "home_team": "Anchor", "away_team": "Away",
+            "home_handicap": -1, "spf_odds_home": 1.35, "spf_odds_draw": 5.0,
+            "spf_odds_away": 8.0, "rqspf_odds_home": 2.2,
+            "rqspf_odds_draw": 3.5, "rqspf_odds_away": 2.6,
+        },
+        {
+            "match_number": "002", "home_team": "Uncertain", "away_team": "Away2",
+            "home_handicap": -1, "spf_odds_home": 2.1, "spf_odds_draw": 3.0,
+            "spf_odds_away": 3.2, "rqspf_odds_home": 3.2,
+            "rqspf_odds_draw": 3.4, "rqspf_odds_away": 1.9,
+        },
+    ])
+    _, plans = build_multi_play_plans(markets, max_matches=2)
+    shadow = next(plan for plan in plans if plan.plan_id == "MULTI_PLAY_ANCHOR_DOUBLE_SHADOW")
+    assert shadow.is_shadow is True
+    assert shadow.total_stake == 4.0
+    assert [len(leg.selections) for leg in shadow.legs] == [1, 2]

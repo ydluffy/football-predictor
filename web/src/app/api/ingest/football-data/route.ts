@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { fetchMajorLeagueMatches, type FixtureRow } from "@/lib/footballDataOrg";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireSupabaseAdmin } from "@/lib/requireSupabaseAdmin";
 
 export async function POST(req: Request) {
   const { searchParams } = new URL(req.url);
@@ -11,7 +11,8 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "missing date_from/date_to" }, { status: 400 });
   }
 
-  const sb = supabaseAdmin();
+  const { sb, response } = requireSupabaseAdmin(req);
+  if (!sb) return response;
   // Short-circuit: if data already exists in this (local CN) date range, skip upstream calls
   const fromLocal = new Date(`${dateFrom}T00:00:00+08:00`);
   const toLocal = new Date(new Date(`${dateTo}T00:00:00+08:00`).getTime() + 24 * 3600 * 1000);

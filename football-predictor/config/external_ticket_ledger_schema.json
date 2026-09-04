@@ -1,0 +1,16 @@
+{
+  "required_columns": [
+    "ticket_id",
+    "sales_date",
+    "source",
+    "plan_type",
+    "selections",
+    "total_stake",
+    "payout",
+    "result",
+    "settlement_status"
+  ],
+  "result_values": ["win", "loss", "push", "pending"],
+  "settlement_status_values": ["settled", "pending"],
+  "promotion_rule": "至少同时包含已结算的 win 与 loss；单侧中奖彩票样本不得用于生产策略晋级。"
+}

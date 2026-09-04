@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { supabaseAdmin } from "@/lib/supabaseAdmin";
+import { requireSupabaseAdmin } from "@/lib/requireSupabaseAdmin";
 
 function clamp01(x: number) {
   return Math.max(0, Math.min(1, x));
@@ -68,7 +68,8 @@ export async function GET(req: Request) {
   const fromUtc = new Date(`${dateFrom}T00:00:00+08:00`).toISOString();
   const toUtc = new Date(new Date(`${dateTo}T00:00:00+08:00`).getTime() + 24 * 3600 * 1000).toISOString();
 
-  const sb = supabaseAdmin();
+  const { sb, response } = requireSupabaseAdmin(req);
+  if (!sb) return response;
 
   const { data: rows, error } = await sb
     .from("fixture_predictions")
