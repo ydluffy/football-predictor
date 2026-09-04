@@ -296,6 +296,11 @@ export default function ControllerPage() {
     ];
   }, [salesDay]);
 
+  const dataGapHint = useMemo(() => {
+    if (controller || overrideTasks.length > 0 || registryTasks.length > 0) return null;
+    return "当前销售日还没有可展示的总控数据。通常不是页面故障，而是 Supabase 里尚未写入 controller_state / override / registry。先点“同步该日”或在本地执行一次回填。";
+  }, [controller, overrideTasks.length, registryTasks.length]);
+
   return (
     <div className="grid gap-6">
       <PageIntro
@@ -361,6 +366,10 @@ export default function ControllerPage() {
             {registryStats.scheduled > 0 ? <StatusBadge tone="neutral">待跑：{registryStats.scheduled}</StatusBadge> : null}
             {registryStats.completed > 0 ? <StatusBadge tone="success">已完成：{registryStats.completed}</StatusBadge> : null}
           </div>
+
+          {dataGapHint ? (
+            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">{dataGapHint}</div>
+          ) : null}
 
           <ChatPanel
             mode="embedded"

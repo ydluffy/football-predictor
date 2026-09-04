@@ -34,6 +34,10 @@ type PredictionOut = {
   p_under_2_5?: number;
   p_btts_yes?: number;
   p_btts_no?: number;
+  odds_home?: number | null;
+  odds_draw?: number | null;
+  odds_away?: number | null;
+  bookmaker?: string | null;
   factors: string[];
   ev_home?: number;
   ev_draw?: number;
@@ -54,6 +58,114 @@ function mean(nums: number[]) {
 
 function clamp(x: number, a: number, b: number) {
   return Math.max(a, Math.min(b, x));
+}
+
+function isMissingColumnError(message?: string | null) {
+  return /column .* does not exist/i.test(String(message || ""));
+}
+
+async function loadPersistedPredictionsByDate(sb: ReturnType<typeof supabaseAdmin>, requestedDate: string) {
+  const sportteryFixturesResp = await sb
+    .from("fixtures")
+    .select(
+      "fixture_id,competition_code,competition_name,utc_date,status,home_team_id,home_team_name,away_team_id,away_team_name,sporttery_match_number"
+    )
+    .eq("sporttery_sales_day", requestedDate)
+    .order("sporttery_match_number", { ascending: true })
+    .order("utc_date", { ascending: true });
+
+  if (sportteryFixturesResp.error && !isMissingColumnError(sportteryFixturesResp.error.message)) {
+    throw new Error(sportteryFixturesResp.error.message);
+  }
+
+  let fixtures = ((sportteryFixturesResp.data || []) as FixtureListRow[]) || [];
+  let forceOnSale = fixtures.length > 0;
+
+  if (fixtures.length === 0) {
+    const from = new Date(`${requestedDate}T00:00:00.000Z`).toISOString();
+    const to = new Date(new Date(`${requestedDate}T00:00:00.000Z`).getTime() + 24 * 3600 * 1000).toISOString();
+    const fallback = await sb
+      .from("fixtures")
+      .select("fixture_id,competition_code,competition_name,utc_date,status,home_team_id,home_team_name,away_team_id,away_team_name")
+      .gte("utc_date", from)
+      .lt("utc_date", to)
+      .order("utc_date", { ascending: true });
+    if (fallback.error) throw new Error(fallback.error.message);
+    fixtures = (fallback.data || []) as FixtureListRow[];
+    forceOnSale = false;
+  }
+
+  if (fixtures.length === 0) return [];
+
+  const translatedTeams = await translateTeamNamesWithCache(fixtures.flatMap((f) => [f.home_team_name, f.away_team_name]));
+  const fixtureIds = fixtures.map((f) => f.fixture_id);
+  const predResp = await sb
+    .from("fixture_predictions")
+    .select(
+      "fixture_id,p_home,p_draw,p_away,confidence,lambda_home,lambda_away,p_over_2_5,p_under_2_5,p_btts_yes,p_btts_no,odds_home,odds_draw,odds_away,bookmaker,ev_home,ev_draw,ev_away,kelly_home,kelly_draw,kelly_away,sporttery_handicap"
+    )
+    .in("fixture_id", fixtureIds);
+
+  if (predResp.error && !isMissingColumnError(predResp.error.message)) {
+    throw new Error(predResp.error.message);
+  }
+  if (predResp.error && isMissingColumnError(predResp.error.message)) {
+    const fallbackPredResp = await sb
+      .from("fixture_predictions")
+      .select(
+        "fixture_id,p_home,p_draw,p_away,confidence,lambda_home,lambda_away,p_over_2_5,p_under_2_5,p_btts_yes,p_btts_no,odds_home,odds_draw,odds_away,bookmaker,ev_home,ev_draw,ev_away,kelly_home,kelly_draw,kelly_away"
+      )
+      .in("fixture_id", fixtureIds);
+    if (fallbackPredResp.error) throw new Error(fallbackPredResp.error.message);
+    predResp.data = fallbackPredResp.data as any;
+  }
+
+  const predMap = new Map<number, any>(((predResp.data || []) as any[]).map((row) => [Number(row.fixture_id), row]));
+
+  return fixtures
+    .map((f) => {
+      const pred = predMap.get(f.fixture_id);
+      if (!pred) return null;
+      return {
+        fixture_id: f.fixture_id,
+        competition_code: f.competition_code,
+        competition_name: f.competition_name ?? null,
+        competition_name_zh: competitionNameZh(f.competition_code, f.competition_name),
+        utc_date: f.utc_date ?? null,
+        kickoff_time_zh: formatLocalTimeFromUtc(f.utc_date, "Asia/Shanghai"),
+        status: f.status ?? null,
+        status_zh: forceOnSale ? "在售" : statusZh(f.status),
+        home_team_name: f.home_team_name ?? null,
+        home_team_name_zh:
+          teamNameZhMaybe(f.home_team_name) || translatedTeams[(f.home_team_name || "").trim()] || f.home_team_name,
+        away_team_name: f.away_team_name ?? null,
+        away_team_name_zh:
+          teamNameZhMaybe(f.away_team_name) || translatedTeams[(f.away_team_name || "").trim()] || f.away_team_name,
+        sporttery_handicap: typeof pred.sporttery_handicap === "number" ? pred.sporttery_handicap : null,
+        p_home: Number(pred.p_home || 0),
+        p_draw: Number(pred.p_draw || 0),
+        p_away: Number(pred.p_away || 0),
+        confidence: Number(pred.confidence || 0),
+        lambda_home: Number(pred.lambda_home || 0),
+        lambda_away: Number(pred.lambda_away || 0),
+        p_over_2_5: typeof pred.p_over_2_5 === "number" ? pred.p_over_2_5 : undefined,
+        p_under_2_5: typeof pred.p_under_2_5 === "number" ? pred.p_under_2_5 : undefined,
+        p_btts_yes: typeof pred.p_btts_yes === "number" ? pred.p_btts_yes : undefined,
+        p_btts_no: typeof pred.p_btts_no === "number" ? pred.p_btts_no : undefined,
+        odds_home: typeof pred.odds_home === "number" ? pred.odds_home : undefined,
+        odds_draw: typeof pred.odds_draw === "number" ? pred.odds_draw : undefined,
+        odds_away: typeof pred.odds_away === "number" ? pred.odds_away : undefined,
+        bookmaker: pred.bookmaker || undefined,
+        ev_home: typeof pred.ev_home === "number" ? pred.ev_home : undefined,
+        ev_draw: typeof pred.ev_draw === "number" ? pred.ev_draw : undefined,
+        ev_away: typeof pred.ev_away === "number" ? pred.ev_away : undefined,
+        kelly_home: typeof pred.kelly_home === "number" ? pred.kelly_home : undefined,
+        kelly_draw: typeof pred.kelly_draw === "number" ? pred.kelly_draw : undefined,
+        kelly_away: typeof pred.kelly_away === "number" ? pred.kelly_away : undefined,
+        factors: [],
+      } satisfies PredictionOut;
+    })
+    .filter(Boolean) as PredictionOut[];
 }
 
 function inferLambdasFromTarget(target: { p_home: number; p_draw: number; p_away: number }) {
@@ -127,6 +239,8 @@ function teamStats(matches: RecentFinishedMatchRow[], teamId: number) {
 export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as { date?: string; fixture_ids?: number[] };
   const requestedDate = body.date;
+  const { sb: adminSb, response } = requireSupabaseAdmin();
+  if (!adminSb) return response;
 
   async function buildSportteryPredictionsBySalesDay(salesDay: string, onlyIds?: Set<number>) {
     const sportteryRows = await loadSportteryFixturesBySalesDay(salesDay);
@@ -198,6 +312,10 @@ export async function POST(req: Request) {
 
   // 1) date 模式：优先走体彩产物
   if (requestedDate) {
+    const persisted = await loadPersistedPredictionsByDate(adminSb, requestedDate);
+    if (persisted.length > 0) {
+      return NextResponse.json({ count: persisted.length, predictions: persisted });
+    }
     const sportteryRows = await loadSportteryFixturesBySalesDay(requestedDate);
     if (sportteryRows.length > 0) {
       const preds = await buildSportteryPredictionsBySalesDay(requestedDate);
@@ -231,10 +349,7 @@ export async function POST(req: Request) {
       return NextResponse.json({ count: output.length, predictions: output });
     }
 
-    const { sb, response } = requireSupabaseAdmin();
-    if (!sb) return response;
-
-    const { data, error } = await sb
+    const { data, error } = await adminSb
       .from("fixtures")
       .select("fixture_id,competition_code,competition_name,utc_date,status,home_team_id,home_team_name,away_team_id,away_team_name")
       .in("fixture_id", supabaseIds);
@@ -248,7 +363,7 @@ export async function POST(req: Request) {
     const fixtureIds = fixtures.map((f) => f.fixture_id);
     const oddsMap = new Map<number, { odds_home: number | null; odds_draw: number | null; odds_away: number | null }>();
     if (fixtureIds.length) {
-      const { data: oddsRows } = await sb
+      const { data: oddsRows } = await adminSb
         .from("odds")
         .select("fixture_id,odds_home,odds_draw,odds_away")
         .in("fixture_id", fixtureIds);
@@ -263,9 +378,9 @@ export async function POST(req: Request) {
       const awayId = f.away_team_id;
       if (!competitionCode || !homeId || !awayId) continue;
 
-      const leagueAvg = await fetchLeagueAverages(sb, competitionCode);
-      const homeRecent = await fetchRecentFinishedMatches(sb, competitionCode, homeId, 20);
-      const awayRecent = await fetchRecentFinishedMatches(sb, competitionCode, awayId, 20);
+      const leagueAvg = await fetchLeagueAverages(adminSb, competitionCode);
+      const homeRecent = await fetchRecentFinishedMatches(adminSb, competitionCode, homeId, 20);
+      const awayRecent = await fetchRecentFinishedMatches(adminSb, competitionCode, awayId, 20);
 
       const home = teamStats(homeRecent, homeId);
       const away = teamStats(awayRecent, awayId);
@@ -339,13 +454,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "missing date or fixture_ids" }, { status: 400 });
   }
 
-  const { sb, response } = requireSupabaseAdmin();
-  if (!sb) return response;
-
   let fixtures: FixtureListRow[] = [];
   const from = new Date(`${requestedDate}T00:00:00.000Z`).toISOString();
   const to = new Date(new Date(`${requestedDate}T00:00:00.000Z`).getTime() + 24 * 3600 * 1000).toISOString();
-  const { data, error } = await sb
+  const { data, error } = await adminSb
     .from("fixtures")
     .select("fixture_id,competition_code,competition_name,utc_date,status,home_team_id,home_team_name,away_team_id,away_team_name")
     .gte("utc_date", from)
@@ -363,7 +475,7 @@ export async function POST(req: Request) {
   const fixtureIds = fixtures.map((f) => f.fixture_id);
   const oddsMap = new Map<number, { odds_home: number | null; odds_draw: number | null; odds_away: number | null }>();
   if (fixtureIds.length) {
-    const { data: oddsRows } = await sb.from("odds").select("fixture_id,odds_home,odds_draw,odds_away").in("fixture_id", fixtureIds);
+    const { data: oddsRows } = await adminSb.from("odds").select("fixture_id,odds_home,odds_draw,odds_away").in("fixture_id", fixtureIds);
     for (const r of (oddsRows || []) as OddsRow[]) {
       oddsMap.set(r.fixture_id, { odds_home: r.odds_home, odds_draw: r.odds_draw, odds_away: r.odds_away });
     }
@@ -375,9 +487,9 @@ export async function POST(req: Request) {
     const awayId = f.away_team_id;
     if (!competitionCode || !homeId || !awayId) continue;
 
-    const leagueAvg = await fetchLeagueAverages(sb, competitionCode);
-    const homeRecent = await fetchRecentFinishedMatches(sb, competitionCode, homeId, 20);
-    const awayRecent = await fetchRecentFinishedMatches(sb, competitionCode, awayId, 20);
+    const leagueAvg = await fetchLeagueAverages(adminSb, competitionCode);
+    const homeRecent = await fetchRecentFinishedMatches(adminSb, competitionCode, homeId, 20);
+    const awayRecent = await fetchRecentFinishedMatches(adminSb, competitionCode, awayId, 20);
 
     const home = teamStats(homeRecent, homeId);
     const away = teamStats(awayRecent, awayId);

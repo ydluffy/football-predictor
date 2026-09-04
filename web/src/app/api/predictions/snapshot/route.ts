@@ -25,36 +25,35 @@ export async function POST(req: Request) {
   if (!predsResp.ok) return NextResponse.json({ error: predsTxt || `HTTP ${predsResp.status}` }, { status: 500 });
   const predsJson = JSON.parse(predsTxt) as { predictions?: PredictionApiItem[] };
   const predictions = predsJson.predictions || [];
+  const fixtures = await loadSportteryFixturesBySalesDay(date);
+  if (fixtures.length > 0) {
+    const extendedFixtures = fixtures.map((f) => {
+      const parsed = parseSportteryFixtureId(f.fixture_id);
+      return {
+        ...f,
+        data_source: "sporttery",
+        sporttery_sales_day: date,
+        sporttery_match_number: parsed?.matchNumber ?? null,
+      };
+    });
+
+    const { error: fxErr } = await sb.from("fixtures").upsert(extendedFixtures as any, { onConflict: "fixture_id" });
+    if (fxErr && isMissingColumnError(fxErr.message)) {
+      // 迁移未执行：降级为只写旧字段
+      const { error: fxErr2 } = await sb.from("fixtures").upsert(fixtures as any, { onConflict: "fixture_id" });
+      if (fxErr2) return NextResponse.json({ error: fxErr2.message }, { status: 500 });
+    } else if (fxErr) {
+      return NextResponse.json({ error: fxErr.message }, { status: 500 });
+    }
+  }
+
   if (!predictions.length) {
-    return NextResponse.json({ date, snapshotted: 0 });
+    return NextResponse.json({ date, snapshotted: 0, persisted_fixtures: fixtures.length });
   }
 
   // 若本次预测来源包含体彩合成 fixture_id，则顺手把体彩赛程落库（用于历史查询/复盘）
   // 注意：为了兼容“数据库还没执行新迁移”的情况，写库时会做一次降级重试。
   const hasSportteryFixture = predictions.some((p) => Boolean(parseSportteryFixtureId(p.fixture_id)));
-  if (hasSportteryFixture) {
-    const fixtures = await loadSportteryFixturesBySalesDay(date);
-    if (fixtures.length > 0) {
-      const extendedFixtures = fixtures.map((f) => {
-        const parsed = parseSportteryFixtureId(f.fixture_id);
-        return {
-          ...f,
-          data_source: "sporttery",
-          sporttery_sales_day: date,
-          sporttery_match_number: parsed?.matchNumber ?? null,
-        };
-      });
-
-      const { error: fxErr } = await sb.from("fixtures").upsert(extendedFixtures as any, { onConflict: "fixture_id" });
-      if (fxErr && isMissingColumnError(fxErr.message)) {
-        // 迁移未执行：降级为只写旧字段
-        const { error: fxErr2 } = await sb.from("fixtures").upsert(fixtures as any, { onConflict: "fixture_id" });
-        if (fxErr2) return NextResponse.json({ error: fxErr2.message }, { status: 500 });
-      } else if (fxErr) {
-        return NextResponse.json({ error: fxErr.message }, { status: 500 });
-      }
-    }
-  }
 
   const upserts = predictions.map((p) => ({
     fixture_id: p.fixture_id,

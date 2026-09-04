@@ -27,6 +27,8 @@ type TaskRegistryPayload = {
   }>;
 };
 
+type TaskRegistryItem = NonNullable<TaskRegistryPayload["tasks"]>[number];
+
 type PlanArtifactPayload = {
   stage?: string;
   analysis_at?: string;
@@ -45,6 +47,15 @@ type PlanArtifactPayload = {
   };
   report?: string;
 };
+
+function isMissingColumnError(message?: string | null) {
+  return /column .* does not exist/i.test(String(message || ""));
+}
+
+function isMissingRelationError(message?: string | null) {
+  const text = String(message || "");
+  return /relation .* does not exist/i.test(text) || /Could not find the table .* in the schema cache/i.test(text);
+}
 
 function dataDirCandidates() {
   if (!localArtifactsEnabled()) return [];
@@ -106,6 +117,56 @@ function normalizePlanStage(stage?: string) {
 
 async function resolveActiveSalesWindow(dataDir: string | null) {
   if (!dataDir) {
+    try {
+      const sb = supabaseAdmin();
+      const latestFixture = await sb
+        .from("fixtures")
+        .select("sporttery_sales_day")
+        .not("sporttery_sales_day", "is", null)
+        .order("sporttery_sales_day", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestFixture.error && !isMissingColumnError(latestFixture.error.message)) {
+        throw new Error(latestFixture.error.message);
+      }
+      const fixtureDay = (latestFixture.data as any)?.sporttery_sales_day;
+      if (fixtureDay) {
+        return {
+          sales_day: fixtureDay,
+          source: "db_latest_sporttery_sales_day",
+          stage: null,
+          scanned_at: null,
+          window_start: null,
+          window_end: null,
+          batch_status: null,
+          message: "未找到本地销售窗产物，已改用数据库中的最近销售日。",
+        };
+      }
+
+      const latestOverride = await sb
+        .from("automation_daily_overrides")
+        .select("sales_day")
+        .order("sales_day", { ascending: false })
+        .limit(1)
+        .maybeSingle();
+      if (latestOverride.error && !isMissingRelationError(latestOverride.error.message)) {
+        throw new Error(latestOverride.error.message);
+      }
+      const overrideDay = (latestOverride.data as any)?.sales_day;
+      if (overrideDay) {
+        return {
+          sales_day: overrideDay,
+          source: "db_latest_daily_override",
+          stage: null,
+          scanned_at: null,
+          window_start: null,
+          window_end: null,
+          batch_status: null,
+          message: "未找到本地销售窗产物，已改用数据库中的最近销售日。",
+        };
+      }
+    } catch {}
+
     const now = nowShanghaiDateTime();
     return {
       sales_day: now.date,
@@ -175,12 +236,49 @@ async function resolveActiveSalesWindow(dataDir: string | null) {
 }
 
 async function loadTaskRegistry(dataDir: string | null, salesDay: string) {
-  if (!dataDir) return null;
+  if (!dataDir) {
+    try {
+      const sb = supabaseAdmin();
+      const resp = await sb
+        .from("automation_task_registries")
+        .select("sales_day,registry_updated_at,payload")
+        .eq("sales_day", salesDay)
+        .maybeSingle();
+      if (resp.error && !isMissingRelationError(resp.error.message)) throw new Error(resp.error.message);
+      return (resp.data as any)?.payload || null;
+    } catch {
+      return null;
+    }
+  }
   return readJson<TaskRegistryPayload>(path.join(dataDir, `sporttery_task_registry_${salesDay}.json`));
 }
 
 async function loadPlanSummaries(dataDir: string | null, salesDay: string) {
-  if (!dataDir) return [];
+  if (!dataDir) {
+    try {
+      const sb = supabaseAdmin();
+      const resp = await sb
+        .from("sporttery_analysis_runs")
+        .select("stage,analysis_at,real_plan_count,total_stake,plan_ids,fixed_shadow_recorded,fixed_shadow_plan_id,report")
+        .eq("sales_day", salesDay)
+        .order("analysis_at", { ascending: true });
+      if (resp.error && !isMissingRelationError(resp.error.message)) throw new Error(resp.error.message);
+      return ((resp.data || []) as any[]).map((item) => ({
+        stage: String(item.stage || "unknown"),
+        stage_label: normalizePlanStage(String(item.stage || "")),
+        analysis_at: item.analysis_at || null,
+        scope: [],
+        real_plan_count: Number(item.real_plan_count || 0),
+        total_stake: Number(item.total_stake || 0),
+        plan_ids: Array.isArray(item.plan_ids) ? item.plan_ids.map((v: unknown) => String(v)) : [],
+        fixed_shadow_recorded: Boolean(item.fixed_shadow_recorded),
+        fixed_shadow_plan_id: item.fixed_shadow_plan_id || null,
+        report: item.report || null,
+      }));
+    } catch {
+      return [];
+    }
+  }
   const files = await readdir(dataDir);
   const matched = files.filter((name) => new RegExp(`^sporttery_(early|final)_analysis_${salesDay}_.+\\.json$`).test(name));
   const output: Array<{
@@ -294,9 +392,9 @@ export async function GET() {
   ]);
 
   const tasks = Array.isArray(taskRegistry?.tasks) ? taskRegistry.tasks : [];
-  const completedTasks = tasks.filter((task) => task.status === "completed").length;
-  const scheduledTasks = tasks.filter((task) => task.status === "scheduled").length;
-  const nextTask = tasks.find((task) => task.status === "scheduled") || null;
+  const completedTasks = tasks.filter((task: TaskRegistryItem) => task.status === "completed").length;
+  const scheduledTasks = tasks.filter((task: TaskRegistryItem) => task.status === "scheduled").length;
+  const nextTask = tasks.find((task: TaskRegistryItem) => task.status === "scheduled") || null;
   const totalPlanCount = planSummaries.reduce((sum, item) => sum + item.real_plan_count, 0);
 
   return NextResponse.json({
