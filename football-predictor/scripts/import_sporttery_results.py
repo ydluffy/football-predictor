@@ -169,6 +169,12 @@ def team_matches(selection_team: str, row: pd.Series) -> str:
     home_candidates = [row.get("home_team", ""), row.get("all_home_team", "")]
     away_candidates = [row.get("away_team", ""), row.get("all_away_team", "")]
     for name in home_candidates:
+        if needle == normalize_name(str(name)):
+            return "home"
+    for name in away_candidates:
+        if needle == normalize_name(str(name)):
+            return "away"
+    for name in home_candidates:
         hay = normalize_name(str(name))
         if needle in hay or hay in needle:
             return "home"
@@ -194,6 +200,19 @@ def parse_selection(selection: str) -> dict[str, str]:
             "handicap": inline_handicap_rq.group("handicap"),
             "market": "rqspf",
             "pick": inline_handicap_rq.group("pick"),
+        }
+    postfix_handicap_rq = re.fullmatch(
+        r"(?P<number>\d{3})\s+(?P<home>.+?)vs(?P<away>.+?)\((?P<handicap>[+-]\d+)\)\s+让球胜平负:(?P<pick>让胜|让平|让负)",
+        compact_value,
+    )
+    if postfix_handicap_rq:
+        return {
+            "team": postfix_handicap_rq.group("home").strip(),
+            "away_team": postfix_handicap_rq.group("away").strip(),
+            "match_number": postfix_handicap_rq.group("number"),
+            "handicap": postfix_handicap_rq.group("handicap"),
+            "market": "rqspf",
+            "pick": postfix_handicap_rq.group("pick"),
         }
     compact_rq = re.fullmatch(
         r"(?P<number>\d{3})\s+(?P<home>.+?)vs(?P<away>.+?)\s+让球胜平负\((?P<handicap>[+-]\d+)\):(?P<pick>让胜|让平|让负)",
@@ -302,10 +321,10 @@ def parse_odds_value(value: object) -> float:
 
 
 def review_ledger(ledger_path: Path, results: pd.DataFrame, output_path: Path | None = None) -> pd.DataFrame:
-    ledger = pd.read_csv(ledger_path, encoding="utf-8-sig", keep_default_na=False)
+    ledger = pd.read_csv(ledger_path, encoding="utf-8-sig", keep_default_na=False, dtype=str)
     for idx, row in ledger.iterrows():
         current_result = str(row.get("result", "")).strip()
-        if current_result and current_result not in {"待赛", "待赛果", "待官方赛果", "pending"}:
+        if current_result and current_result not in {"待赛", "待赛果", "待官方赛果", "待复盘", "pending"}:
             continue
         selections = split_plan_selections(str(row.get("selections", "")))
         if not selections:

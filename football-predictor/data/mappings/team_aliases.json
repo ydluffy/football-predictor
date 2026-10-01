@@ -47,6 +47,21 @@
     {"canonical": "BK Hacken", "aliases": ["BK Häcken", "Hacken", "赫根"]},
     {"canonical": "Halmstads BK", "aliases": ["Halmstad", "哈尔姆斯"]},
     {"canonical": "Internacional", "aliases": ["SC Internacional", "Internacional RS", "巴西国际"]},
-    {"canonical": "Remo", "aliases": ["Clube do Remo", "里莫"]}
+    {"canonical": "Remo", "aliases": ["Clube do Remo", "里莫"]},
+    {"canonical": "Birmingham City", "aliases": ["Birmingham", "伯明翰"]},
+    {"canonical": "Wolverhampton Wanderers", "aliases": ["Wolves", "Wolverhampton", "伍尔弗"]},
+    {"canonical": "AZ Alkmaar", "aliases": ["Alkmaar", "阿尔克马"]},
+    {"canonical": "Everton", "aliases": ["Everton FC", "埃弗顿"]},
+    {"canonical": "Frosinone", "aliases": ["Frosinone Calcio", "弗洛西诺"]},
+    {"canonical": "Venezia", "aliases": ["Venezia FC", "威尼斯"]},
+    {"canonical": "Parma", "aliases": ["Parma Calcio 1913", "帕尔马"]},
+    {"canonical": "Monza", "aliases": ["AC Monza", "蒙扎"]},
+    {"canonical": "Troyes", "aliases": ["ESTAC Troyes", "特鲁瓦"]},
+    {"canonical": "Strasbourg", "aliases": ["RC Strasbourg", "RC Strasbourg Alsace", "斯特拉斯"]},
+    {"canonical": "Hamburger SV", "aliases": ["Hamburg", "HSV", "汉堡"]},
+    {"canonical": "Mainz 05", "aliases": ["Mainz", "1. FSV Mainz 05", "美因茨"]},
+    {"canonical": "Valencia", "aliases": ["Valencia CF", "巴伦西亚"]},
+    {"canonical": "Santa Clara", "aliases": ["CD Santa Clara", "圣克拉拉"]},
+    {"canonical": "Rio Ave", "aliases": ["Rio Ave FC", "里奥阿维"]}
   ]
 }

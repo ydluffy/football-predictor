@@ -3,6 +3,7 @@ import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { teamNameZh } from "@/lib/zh";
 import { localArtifactsEnabled } from "@/lib/localArtifacts";
+import { supabaseAdmin } from "@/lib/supabaseAdmin";
 
 type InputFixture = {
   fixture_id: number;
@@ -189,6 +190,33 @@ export async function POST(req: Request) {
     const fixtures = body.fixtures || [];
     if (!fixtures.length) {
       return NextResponse.json({ count: 0, items: [] });
+    }
+
+    // 数据库优先：fixture_market_intel 由 sync-market 端点维护，线上不依赖本地 CSV
+    try {
+      const sb = supabaseAdmin();
+      const fixtureIds = fixtures.map((fixture) => fixture.fixture_id);
+      const dbResp = await sb
+        .from("fixture_market_intel")
+        .select("fixture_id,movement,alignment")
+        .in("fixture_id", fixtureIds);
+      if (!dbResp.error && (dbResp.data || []).length > 0) {
+        const intelMap = new Map<number, { movement: unknown; alignment: unknown }>();
+        for (const row of (dbResp.data || []) as Array<{ fixture_id: number; movement: unknown; alignment: unknown }>) {
+          intelMap.set(row.fixture_id, { movement: row.movement, alignment: row.alignment });
+        }
+        const items = fixtures.map((fixture) => {
+          const intel = intelMap.get(fixture.fixture_id);
+          return {
+            fixture_id: fixture.fixture_id,
+            movement: (intel?.movement || null) as any,
+            alignment: (intel?.alignment || null) as any,
+          };
+        });
+        return NextResponse.json({ count: items.length, items, source: "db" });
+      }
+    } catch {
+      // 数据库不可用时回退本地 CSV
     }
 
     const [movementRows, alignmentRows] = await Promise.all([loadMovementRows(), loadAlignmentRows()]);

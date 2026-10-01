@@ -236,8 +236,40 @@ def capture_sporttery_the_odds_snapshot(
     payload_by_sport: dict[str, list[dict[str, Any]]] = {}
     requests: list[dict[str, Any]] = []
     frames: list[pd.DataFrame] = []
+    region_count = len([value for value in regions.split(",") if value.strip()])
+    market_count = len([value for value in markets.split(",") if value.strip()])
+    estimated_credit_cost = len(selected_keys) * region_count * market_count
+    quota_preflight: dict[str, Any] = {
+        "performed": False,
+        "estimated_credit_cost": estimated_credit_cost,
+        "requests_used": None,
+        "requests_remaining": None,
+        "blocked": False,
+        "reason": "",
+    }
 
-    if client.configured:
+    # The /sports endpoint is quota-free.  Probe it before the paid routed
+    # requests so a nearly exhausted monthly allowance does not generate one
+    # guaranteed 401 for every routed competition.  Custom fetchers used by
+    # tests/offline imports intentionally bypass this live preflight.
+    if client.configured and selected_keys and fetcher is fetch_odds:
+        quota_preflight["performed"] = True
+        try:
+            client.get("sports/")
+            used_header = client.last_headers.get("x-requests-used", "")
+            remaining_header = client.last_headers.get("x-requests-remaining", "")
+            quota_preflight["requests_used"] = int(used_header) if used_header.isdigit() else None
+            quota_preflight["requests_remaining"] = (
+                int(remaining_header) if remaining_header.isdigit() else None
+            )
+            remaining = quota_preflight["requests_remaining"]
+            if remaining is not None and remaining < estimated_credit_cost:
+                quota_preflight["blocked"] = True
+                quota_preflight["reason"] = "remaining_quota_below_estimated_route_cost"
+        except Exception as exc:
+            quota_preflight["reason"] = f"quota_probe_failed:{type(exc).__name__}"
+
+    if client.configured and not quota_preflight["blocked"]:
         for sport_key in selected_keys:
             try:
                 payload = fetcher(
@@ -296,6 +328,8 @@ def capture_sporttery_the_odds_snapshot(
         status = "not_configured"
     elif not selected_keys:
         status = "no_routed_sports"
+    elif quota_preflight["blocked"]:
+        status = "quota_insufficient"
     elif errors == len(requests):
         status = "source_failed"
     elif mapped == len(fixtures):
@@ -315,6 +349,7 @@ def capture_sporttery_the_odds_snapshot(
         "configured": client.configured,
         "regions": regions,
         "markets": markets,
+        "quota_preflight": quota_preflight,
         "sport_keys": selected_keys,
         "unrouted_competitions": unrouted,
         "requests": requests,

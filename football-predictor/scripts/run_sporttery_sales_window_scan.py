@@ -35,7 +35,8 @@ from data.the_odds_sporttery import (  # noqa: E402
     capture_sporttery_the_odds_snapshot,
     load_project_env,
 )
-from data.unified_outer_market_history import build_unified_histories  # noqa: E402
+from data.unified_outer_market_history import build_unified_histories, persist_unified_histories  # noqa: E402
+from capture_nowscore_market import capture_on_external_failure, effective_external_status  # noqa: E402
 from world_cup.sporttery_markets import parse_lottery_gov_spf_text  # noqa: E402
 from world_cup.sporttery_play_odds import (  # noqa: E402
     parse_lottery_gov_correct_score_text,
@@ -263,19 +264,20 @@ def scan_command(args: argparse.Namespace) -> int:
             timeout=args.the_odds_timeout,
             kickoff_tolerance_minutes=args.the_odds_kickoff_tolerance_minutes,
         )
+        nowscore_audit = capture_on_external_failure(scan, external_audit)
         unified_outer, unified_model, unified_audit = build_unified_histories(
             api_football_history=ROOT / "data" / "external" / "api_football_odds" / "history.csv",
             the_odds_snapshot_root=ROOT / "data" / "external" / "the_odds_api_sporttery" / "snapshots",
+            nowscore_snapshot_root=ROOT / "data" / "external" / "nowscore" / "snapshots",
         )
         unified_outer_path = ROOT / "data" / "external" / "outer_market_snapshots" / "history.csv"
         unified_model_path = ROOT / "data" / "manual" / "external_market_snapshot_history.csv"
         unified_audit_path = ROOT / "artifacts" / "data" / "unified_outer_market_history_latest.json"
-        unified_outer_path.parent.mkdir(parents=True, exist_ok=True)
-        unified_model_path.parent.mkdir(parents=True, exist_ok=True)
-        unified_outer.to_csv(unified_outer_path, index=False, encoding="utf-8-sig")
-        unified_model.to_csv(unified_model_path, index=False, encoding="utf-8-sig")
-        unified_audit.update({"outer_output": str(unified_outer_path), "model_output": str(unified_model_path)})
-        unified_audit_path.write_text(json.dumps(unified_audit, ensure_ascii=False, indent=2), encoding="utf-8")
+        unified_audit = persist_unified_histories(
+            unified_outer, unified_model, unified_audit,
+            outer_path=unified_outer_path, model_path=unified_model_path, audit_path=unified_audit_path,
+            pending_root=ROOT / "artifacts/data/unified_outer_market_pending",
+        )
         external_audit["unified_history"] = unified_audit
         latest_external = ROOT / "artifacts" / "data" / "the_odds_api_sporttery_latest.json"
         latest_external.parent.mkdir(parents=True, exist_ok=True)
@@ -294,6 +296,14 @@ def scan_command(args: argparse.Namespace) -> int:
             "ledger_authority": False,
         }
         sources["the_odds_api"] = external_audit
+        sources["nowscore_fallback"] = nowscore_audit
+        scan["external_odds"]["nowscore_fallback"] = {
+            "status": nowscore_audit["status"],
+            "snapshot_dir": nowscore_audit.get("snapshot_dir", ""),
+            "research_eligible_rows": nowscore_audit.get("research_eligible_rows", 0),
+            "prediction_authority": False,
+        }
+        scan["external_odds"].update(effective_external_status(external_audit, nowscore_audit))
         for task in scan.get("planned_tasks", []):
             task["external_odds_policy"] = "refresh_at_final"
             task["confirm_snapshot_status"] = external_audit["status"]

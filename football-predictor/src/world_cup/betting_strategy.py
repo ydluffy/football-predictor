@@ -407,6 +407,7 @@ def build_multi_play_plans(
     fixed_odds_max: float = 10.00,
     fixed_odds_target: float = 8.00,
     fixed_odds_max_legs: int = 4,
+    max_shared_production_matches: int = 1,
 ) -> tuple[list[dict[str, object]], list[BettingPlan]]:
     if markets.empty:
         return [], []
@@ -450,9 +451,16 @@ def build_multi_play_plans(
     conservative_pool = low_risk_candidates
     conservative_legs = sorted(conservative_pool, key=_leg_confidence, reverse=True)[:2]
     ranked_production = sorted(conservative_pool, key=_leg_confidence, reverse=True)
-    # Keep at most one shared core leg between safe and value. With three valid
-    # candidates this yields safe=[1,2], value=[2,3], instead of two duplicates.
-    value_pool = [leg for leg in ranked_production if not conservative_legs or leg.match_number != conservative_legs[0].match_number]
+    # Keep production exposure configurable so the monthly research candidate can
+    # require fully independent safe/value tickets without changing the frozen
+    # production default. The default of one preserves the current policy.
+    shared_limit = max(0, int(max_shared_production_matches))
+    safe_numbers = [leg.match_number for leg in conservative_legs]
+    allowed_shared = set(safe_numbers[-shared_limit:]) if shared_limit else set()
+    value_pool = [
+        leg for leg in ranked_production
+        if leg.match_number not in safe_numbers or leg.match_number in allowed_shared
+    ]
     value_legs = value_pool[:2]
     fixed_odds_legs = _fixed_odds_legs(
         shadow_single_candidates,
@@ -488,9 +496,9 @@ def build_multi_play_plans(
             title="价值方案：两场方向串关",
             stake=stake,
             legs=tuple(value_legs),
-            rationale="只保留两个通过生产资格闸门的方向，并限制与稳健方案最多共享一个核心场次。",
+            rationale=f"只保留两个通过生产资格闸门的方向，并限制与稳健方案最多共享{shared_limit}个核心场次。",
             risk_notes=f"这是收益弹性方案，不应和稳健方案混为一谈。高风险内外盘分歧场已优先降权。盘口信号：{risk_suffix}",
-            eligibility_note="两腿制；与稳健方案最多共享一场。",
+            eligibility_note=f"两腿制；与稳健方案最多共享{shared_limit}场。",
         ))
     hedge_selected = tuple(hedge_legs[:2])
     hedge_plan = BettingPlan(

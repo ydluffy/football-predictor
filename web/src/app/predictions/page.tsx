@@ -42,6 +42,24 @@ function getMarketSignalTags(intel?: FixtureMarketIntel | null) {
   return tags;
 }
 
+// 自然语言推荐口径：把概率和让球盘口翻译成一句话（参考行业"主队最少赢2球"式表达）
+function buildRecommendationPhrase(
+  prediction: Prediction,
+  handicapEvaluation: ReturnType<typeof evaluateSportteryHandicap>,
+) {
+  const top = [
+    { label: "主胜", value: prediction.p_home },
+    { label: "平局", value: prediction.p_draw },
+    { label: "客胜", value: prediction.p_away },
+  ].sort((a, b) => b.value - a.value)[0];
+  const outcomePart = `胜平负倾向${top.label}（${Math.round(top.value * 100)}%）`;
+  if (!handicapEvaluation) return outcomePart;
+  const handicapPart = `让球口径：${handicapEvaluation.compactText} ${handicapEvaluation.topLabel}（${Math.round(
+    handicapEvaluation.topProbability * 100,
+  )}%，即${handicapEvaluation.logicHint}）`;
+  return `${outcomePart}；${handicapPart}`;
+}
+
 function PredictionsPageContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -353,6 +371,11 @@ function PredictionsPageContent() {
                       {p.p_under_2_5 != null ? `${Math.round(p.p_under_2_5 * 100)}%` : "-"}，双方进球：
                       {p.p_btts_yes != null ? `${Math.round(p.p_btts_yes * 100)}%` : "-"}
                     </div>
+                  </div>
+
+                  <div className="mt-3 rounded-xl border border-zinc-900/10 bg-zinc-900 px-3 py-3 text-xs text-zinc-100">
+                    <div className="font-semibold">推荐口径</div>
+                    <div className="mt-1 leading-5">{buildRecommendationPhrase(p, handicapEvaluation)}</div>
                   </div>
 
                   <div className="mt-3 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-3 text-xs text-emerald-900">

@@ -169,6 +169,7 @@ export type Prediction = {
   p_btts_yes?: number;
   p_btts_no?: number;
   factors: string[];
+  bookmaker?: string | null;
   ev_home?: number;
   ev_draw?: number;
   ev_away?: number;
@@ -260,6 +261,13 @@ export type DashboardContextResponse = {
     scheduled_tasks: number;
     next_task_key: string | null;
     next_run_at: string | null;
+    tasks?: Array<{
+      key: string;
+      run_at: string | null;
+      status: string | null;
+      time_group: string | null;
+      purpose: string | null;
+    }>;
   };
   betting_plans: {
     count: number;
@@ -296,6 +304,157 @@ export type DashboardContextResponse = {
       error: string | null;
     };
   };
+};
+
+export type AnalysisRunLedgerItem = {
+  sales_day: string;
+  stage: string;
+  stage_label: string;
+  analysis_at: string | null;
+  task_key?: string | null;
+  status?: string | null;
+  official_on_sale_count?: number | null;
+  real_plan_count: number;
+  total_stake: number;
+  plan_ids: string[];
+  fixed_shadow_recorded: boolean;
+  fixed_shadow_plan_id: string | null;
+  report: string | null;
+  scope_match_numbers: string[];
+};
+
+export type OddsChangeInfo = {
+  before: Array<number | null>;
+  after: Array<number | null>;
+  changed: boolean;
+  captured_at: string | null;
+};
+
+export type FixtureLedgerRegistryTask = {
+  key: string;
+  run_at: string | null;
+  status: string | null;
+  time_group: string | null;
+  purpose: string | null;
+};
+
+export type FixtureLedgerRegistry = {
+  updated_at: string | null;
+  total_tasks: number;
+  completed_tasks: number;
+  scheduled_tasks: number;
+  next_task: { key: string | null; run_at: string | null };
+  tasks: FixtureLedgerRegistryTask[];
+};
+
+export type FixtureLedgerRow = Fixture & {
+  sporttery_match_number?: string | null;
+  has_prediction: boolean;
+  analysis_run_count: number;
+  analysis_stage_labels: string[];
+  latest_analysis_at: string | null;
+  odds_change: OddsChangeInfo | null;
+};
+
+export type FixtureLedgerResponse = {
+  sales_day: string;
+  fixture_count: number;
+  predicted_fixture_count: number;
+  analysis_run_count: number;
+  fixtures: FixtureLedgerRow[];
+  runs: AnalysisRunLedgerItem[];
+  registry: FixtureLedgerRegistry | null;
+};
+
+export type ReviewLedgerDay = {
+  summary: ReviewSummary;
+  plans: ReviewPlanItem[];
+};
+
+export type ReviewLedgerMonth = {
+  month: string;
+  sales_day_count: number;
+  plan_count: number;
+  hit_count: number;
+  miss_count: number;
+  stake: number;
+  payout: number;
+  net_profit: number;
+  roi: number | null;
+};
+
+export type ReviewLedgerResponse = {
+  summary_count: number;
+  plan_count: number;
+  days: ReviewLedgerDay[];
+  months: ReviewLedgerMonth[];
+};
+
+export type OddsStatusItem = {
+  fixture_id: number;
+  sporttery_match_number?: string | null;
+  competition_name?: string | null;
+  competition_name_zh?: string | null;
+  utc_date?: string | null;
+  kickoff_time_zh?: string | null;
+  home_team_name?: string | null;
+  home_team_name_zh?: string | null;
+  away_team_name?: string | null;
+  away_team_name_zh?: string | null;
+  bookmaker?: string | null;
+  collected_at?: string | null;
+  updated_at?: string | null;
+  odds_home?: number | null;
+  odds_draw?: number | null;
+  odds_away?: number | null;
+  prediction_bookmaker?: string | null;
+  prediction_generated_at?: string | null;
+  prediction_as_of_date?: string | null;
+  prediction_model_version?: string | null;
+  prediction_source?: string | null;
+  prediction_odds_home?: number | null;
+  prediction_odds_draw?: number | null;
+  prediction_odds_away?: number | null;
+  has_direct_odds: boolean;
+  has_prediction_snapshot_odds: boolean;
+  status_mode?: "both" | "direct_only" | "snapshot_only" | "missing";
+  missing_reason?: string | null;
+  // 纯计算指标：优先用直接赔率，缺失时退回预测快照赔率
+  metrics_source?: "direct" | "snapshot" | null;
+  implied_home?: number | null;
+  implied_draw?: number | null;
+  implied_away?: number | null;
+  payout_rate?: number | null;
+  fair_home?: number | null;
+  fair_draw?: number | null;
+  fair_away?: number | null;
+  model_p_home?: number | null;
+  model_p_draw?: number | null;
+  model_p_away?: number | null;
+  kelly_home?: number | null;
+  kelly_draw?: number | null;
+  kelly_away?: number | null;
+  value_side?: string | null;
+  value_edge?: number | null;
+};
+
+export type OddsSourceSummary = {
+  bookmaker: string;
+  count: number;
+};
+
+export type OddsStatusResponse = {
+  sales_day: string;
+  fixture_count: number;
+  direct_odds_count: number;
+  prediction_snapshot_odds_count: number;
+  value_side_count?: number;
+  avg_payout_rate?: number | null;
+  latest_direct_collected_at?: string | null;
+  latest_snapshot_generated_at?: string | null;
+  source_summary: OddsSourceSummary[];
+  missing_summary: Array<{ reason: string; count: number }>;
+  rows: OddsStatusItem[];
 };
 
 function apiBase(): string {
@@ -449,11 +608,42 @@ export async function getReviews(): Promise<ReviewsResponse> {
 }
 
 export async function getDashboardContext(): Promise<DashboardContextResponse> {
-  const resp = await fetch(`${apiBase()}/api/dashboard/context`, { cache: "no-store" });
+  const resp = await workbenchFetch(`${apiBase()}/api/dashboard/context`, { cache: "no-store" });
   if (!resp.ok) {
     const txt = await resp.text();
     throw new Error(txt || `HTTP ${resp.status}`);
   }
   return (await resp.json()) as DashboardContextResponse;
+}
+
+export async function getFixtureLedger(date: string): Promise<FixtureLedgerResponse> {
+  const resp = await workbenchFetch(`${apiBase()}/api/fixtures/ledger?date=${encodeURIComponent(date)}`, {
+    cache: "no-store",
+  });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(txt || `HTTP ${resp.status}`);
+  }
+  return (await resp.json()) as FixtureLedgerResponse;
+}
+
+export async function getReviewLedger(): Promise<ReviewLedgerResponse> {
+  const resp = await workbenchFetch(`${apiBase()}/api/reviews/ledger`, { cache: "no-store" });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(txt || `HTTP ${resp.status}`);
+  }
+  return (await resp.json()) as ReviewLedgerResponse;
+}
+
+export async function getOddsStatus(date: string): Promise<OddsStatusResponse> {
+  const resp = await workbenchFetch(`${apiBase()}/api/odds/status?date=${encodeURIComponent(date)}`, {
+    cache: "no-store",
+  });
+  if (!resp.ok) {
+    const txt = await resp.text();
+    throw new Error(txt || `HTTP ${resp.status}`);
+  }
+  return (await resp.json()) as OddsStatusResponse;
 }
 

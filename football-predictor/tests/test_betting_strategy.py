@@ -289,6 +289,30 @@ def test_safe_and_value_share_at_most_one_match() -> None:
     assert len(value.legs) == 2
 
 
+def test_research_candidate_can_require_zero_shared_production_matches() -> None:
+    markets = pd.DataFrame([
+        {
+            "match_number": str(number), "home_team": f"H{number}", "away_team": f"A{number}",
+            "home_handicap": -1, "spf_odds_home": odd, "spf_odds_draw": 4.5,
+            "spf_odds_away": 7.0, "rqspf_odds_home": 2.4,
+            "rqspf_odds_draw": 3.2, "rqspf_odds_away": 2.5,
+        }
+        for number, odd in [(1, 1.40), (2, 1.45), (3, 1.50), (4, 1.55)]
+    ])
+
+    _, plans = build_multi_play_plans(
+        markets,
+        max_matches=4,
+        max_shared_production_matches=0,
+    )
+
+    safe = next(plan for plan in plans if plan.plan_id == "MULTI_PLAY_SAFE")
+    value = next(plan for plan in plans if plan.plan_id == "MULTI_PLAY_VALUE")
+    assert {leg.match_number for leg in safe.legs}.isdisjoint(
+        {leg.match_number for leg in value.legs}
+    )
+
+
 def test_strong_anchor_double_is_shadow_only() -> None:
     markets = pd.DataFrame([
         {

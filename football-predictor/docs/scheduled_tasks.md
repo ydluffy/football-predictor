@@ -11,19 +11,48 @@
 - 当月所有预扫描、开售确认、动态终版、复盘和月度回顾都回复到同一个总控对话。
 - 项目文件和任务注册表是唯一长期状态；聊天记录仅作为当月控制面，不得成为唯一数据来源。
 - 控制器自动化 ID 以 `artifacts/data/football_automation_controller_state.json` 的 `controller_automation_id` 为准，不得在文档或脚本中写死。每次运行结束必须从注册表计算下一次最早任务，并更新该控制器自身的下一次唤醒时间，不得创建新的 cron 对话。
-- 动态终版任务只写入 `sporttery_task_registry_YYYY-MM-DD.json`，由控制器依次执行；不再为每个时间组创建独立 Codex 自动化。
+- 动态终版任务先写入 `sporttery_task_registry_YYYY-MM-DD.json`，再由控制器把**下一次**执行时间更新到同一个桌面端心跳并回读；注册表本身不是定时器，不再为每个时间组创建独立 Codex 自动化。
 - 自身重排失败时写入 `artifacts/data/football_automation_controller_state.json` 的 `pending_reschedule`，保留旧的暂停任务作为人工恢复模板，不得谎报已安排。
+- 唤醒采用事件驱动：每天从 10:00 预扫描、11:05 确认开始；11:05 根据实际在售赛程生成当天注册表，之后同一 heartbeat 每次只排到下一项 `run_at`。不得保留无任务的半小时或整点轮询；当日队列清空后排到次日 10:00。
 - 月度滚动成功前不得归档旧总控；新总控创建、控制器迁移和交接文件三项都成功后，才归档上月对话。
 
-控制器阶段顺序为：`10:00 预扫描 → 11:05 开售确认 → 13:00 复盘 → 注册表中最早终版 → 工作日 21:00/周末 22:00 兜底 → 次日 10:00`。复盘只结算前一销售日既有方案，不得生成新的赛前投注方案；已过期任务只留档，不得补写投注方案。
+控制器阶段顺序为：`10:00 预扫描 → 11:05 开售确认 → 13:00 复盘 → 注册表中最早终版 → 工作日 21:00/周末 22:00 兜底 → 次日 10:00`。长期运行提示词见 `docs/controller_heartbeat_prompt.md`，不得用带过期“下一任务”的单日流水替换。复盘只结算前一销售日既有方案，不得生成新的赛前投注方案；已过期任务只留档，不得补写投注方案。
 
 当日存在 `artifacts/data/sporttery_daily_schedule_override_YYYY-MM-DD.json` 时，13:00 复盘之后的当日阶段改为按该文件及注册表 `run_at` 顺序执行，允许包含“早期基线分析”和“正式预测和投注方案”两类任务。早期基线只冻结官方赔率、可用外盘和分析基准，禁止生成或写入真实投注方案；正式阶段必须重新抓取、与对应基线比较并继续遵守官方在售、时效、硬锁、玩法覆盖、额度和重复入账闸门。用户给出的目标场次数与官方确认数不一致时，必须记录差异，只处理官方确认或后续刷新新增的在售比赛，不得补造场次。
 
 ## 项目文件衔接规则
 
+### 外部方案影子对照（2026-09-04 登记）
+
+正式终版及复盘阶段读取 `docs/external_structure_shadow_20260903.md`，按其中冻结、可比性和独立输出规则执行结构影子对照。仅覆盖登记后的未锁定批次，缺输入记录跳过，不补造历史前瞻记录。用户9月3日四组票登记在 `data/manual/external_shadow_2026-09-03.json`，全部为回顾性案例，不计前瞻收益或生产晋级。时间敏感的正式工作优先；影子失败只报独立状态，不影响生产，不新增自动化。
+
+### 阶段完成后数据同步与失败补偿（2026-09-04 起）
+
+同一个本地总控负责同步，不新增 cron 或独立总控。先完成并落盘生产工作，再执行同步；数据库展示失败不回滚预测、不阻断下一阶段，不修改正式投注台账。
+
+- 11:05确认/迟采确认完成后：`.\.venv\Scripts\python.exe scripts/run_controller_data_sync.py --stage confirm --sales-day YYYY-MM-DD`。
+- 每批早期分析、动态终版或晚间兜底完成后：同命令使用 `--stage analysis`，销售日为本批实际销售日。
+- 13:00复盘完成后：同命令使用 `--stage review`，销售日为被复盘日，不是当前自然日。此模式不重写历史赛前预测。
+- 每次更新总控状态和下一次心跳后：同命令使用 `--stage controller --sales-day <当日>`，将最新编排同步到网页。
+- 每次唤醒在处理时间敏感的采集/终版任务之后，运行 `scripts/run_controller_data_sync.py --retry-pending`。紧邻硬锁时优先生产任务，同步延后，不为重试新增高频唤醒。
+
+### 市场信号同步（2026-10-01 登记）
+
+`confirm` 与 `analysis` 阶段自登记起额外包含 `market` 步骤：读取 `data/processed/handicap_market_movement_latest.csv` 与 `artifacts/data/inner_outer_market_alignment_latest.csv`，经 `/api/automation/sync-market` 按“主客队名 + 北京时间开赛日期”匹配到当日 fixtures 后写入 `fixture_market_intel` 表。匹配不上的行只计数不报错；两个文件缺失时同步 0 行不算失败。网页端 `/api/market-intel` 已改为优先读该表，本地 CSV 仅作本地开发回退。首次使用前需在 Supabase 执行一次 `supabase/migrations/add_fixture_market_intel.sql`。重建市场特征后（例如单独重跑 movement/alignment 构建器）可用 `--stage market --sales-day <当日>` 单独补同步；该步骤不改变任何预测、台账或生产结论。
+
+日期必须显式指定；日常不得用默认40天历史回填。新增入口只导出冻结产物，不调用在线预测引擎；缺失快照不得伪造，预测来源时间保留原文件时间。`--dry-run` 只检查计划，不发网络请求、不写队列。
+
+历史同步兼容 daily/full 两种复盘JSON；若仅有Markdown报告，也从已结算正式/固定赔率影子台账只读导出结构化摘要和逐票记录，附原CSV哈希。不得重新结算，不把导出时间冒充复盘发生时间，CSV重复票号或结构损坏时保留失败。台账原件不修改，Supabase仅为展示副本。
+
+执行前确认本地 Web 服务已启动、`ALLOW_LOCAL_ARTIFACTS=true` 且 Supabase 配置存在。凭据从环境变量或 `web/.env.local` 读取，禁止把密码放入命令行或报告。服务不可用时保留待同步状态，不能声称网页已更新；不自动开放公网端口。
+
+队列：`artifacts/data/controller_sync/outbox.json`；逐次审计：同目录 `run_*.json`；最新摘要：`latest.json`。每个销售日/步骤唯一，网络请求前持久化，写后独立数据库SELECT核对主键和字段；不允许仅凭HTTP成功判定。重复主键按最新证据去重。每次最多处理6个步骤，每个步骤瞬时最多2次请求，普通失败30分钟后可补偿，401/403延迟一天并提示核验配置。后续唤醒只补未完成步骤；新阶段落盘可以重新触发该日期同步。
+
+`writer.lock` 保护单写入者；若进程异常留下锁，只能先核实不存在运行中的同步进程后人工清理，禁止盲删。队列损坏时保留原文件并报错，不能重置成空队列。退出非0时正文区分“生产已完成、数据同步待补偿”，报告待同步键及审计路径。
+
 ### 2026-09-04 起强制防漏排检查
 
-每次结束前运行 `python scripts/next_controller_task.py`，合并固定的每日10:00预扫描、11:05确认、13:00复盘与前一日/当日/次日未完成注册任务，取最早合法时间更新唯一心跳。禁止用“明日复盘”覆盖更早的上午采集。该命令只选择任务，不会自动修改心跳；必须调用自动化更新并读回验证，失败时记录 pending_reschedule，不得宣称已安排。
+每次结束前运行 `.\.venv\Scripts\python.exe scripts/next_controller_task.py`，合并每日10:00预扫描、11:05确认、13:00复盘、确有未完成比赛时的晚间兜底与前一日/当日/次日未完成注册任务，取最早合法时间更新唯一心跳。禁止用“明日复盘”覆盖更早的上午采集。该命令只选择任务，不会自动修改心跳；必须通过受支持的桌面端定时任务接口把同一 heartbeat 重排到唯一下一时间并回读验证，失败时记录 `pending_reschedule=true`、保留注册表 `pending_schedule`，不得宣称已安排。当日队列清空后，下一时间必须回到次日10:00预扫描，防止事件驱动链断开。
 
 总控提示词必须长期保留完整流程，不能替换成仅某销售日某一任务。每次唤醒先检查今日是否已有确认快照；11:05后缺失时按实际时间补采并标明迟采，不伪造10:00/11:05快照，不补写过锁投注。13:00前不得把尚未到期复盘视为漏跑。
 
@@ -92,13 +121,15 @@
 
 提示词：
 
-> 在本地主目录 `E:\ball-match-prediction-system\football-predictor` 执行开售确认与任务编排，不使用独立工作树。先按“项目文件衔接规则”读取文件，找到当天最新 `preopen` 扫描，再运行 `python scripts/run_sporttery_sales_window_scan.py scan --stage confirm --fetch --previous-scan <当天最新preopen JSON>`。必须重新抓取 SPF/RQSPF、总进球、比分和半全场；仍确认在售的比赛标记为 `on_sale`，消失、停售或已开赛的标记为 `stopped`。只有本次仍为空时才标记 `no_matches`。确认命令默认以 `--the-odds-mode auto` 对 `on_sale` 场次按赛事路由 The Odds API，保存不可变原始响应、赔率长表、市场摘要、逐场同队同时间映射和哈希审计；外盘失败只降级并留档，不能改变体彩在售结论。读取脚本生成的任务注册表，对 `pending_schedule`、`failed`、`updated` 记录创建或更新同一本地主目录下的终版任务；成功或失败后必须用脚本 `task-status` 子命令回写同一记录。不得只报告“任务未安排”后放弃。确认扫描及外盘导入本身都不写投注台账。
+> 在本地主目录 `E:\ball-match-prediction-system\football-predictor` 执行开售确认与任务编排，不使用独立工作树。先按“项目文件衔接规则”读取文件，找到当天最新 `preopen` 扫描，再运行 `python scripts/run_sporttery_sales_window_scan.py scan --stage confirm --fetch --previous-scan <当天最新preopen JSON>`。必须重新抓取 SPF/RQSPF、总进球、比分和半全场；仍确认在售的比赛标记为 `on_sale`，消失、停售或已开赛的标记为 `stopped`。只有本次仍为空时才标记 `no_matches`。确认命令默认以 `--the-odds-mode auto` 对 `on_sale` 场次按赛事路由 The Odds API，保存不可变原始响应、赔率长表、市场摘要、逐场同队同时间映射和哈希审计；外盘失败只降级并留档，不能改变体彩在售结论。读取脚本生成的任务注册表，计算最早的未过硬锁任务，更新**同一个心跳**的下一次唤醒并回读；回读成功或失败后用 `task-status` 回写同一记录。不得把注册表 `pending_schedule` 当成已上线，也不得因更新接口缺失而静默放弃。确认扫描及外盘导入本身都不写投注台账。
 
 开售确认及后续刷新如果取得外盘赔率，必须保留 `captured_at`、原始开赛时间和来源，不得只覆盖 latest 文件；无法证明早于开赛的快照不得进入历史研究。
 
 The Odds API 的确认快照保存到 `data/external/the_odds_api_sporttery/snapshots/<时间戳>_confirm/`。逐场 `mapping_status` 只有在主客队规范名一致、开赛时间差不超过配置阈值且候选唯一时才是 `mapped`；`unmatched` 或 `ambiguous` 只能留档。`artifacts/data/the_odds_api_sporttery_latest.json` 只是最新审计指针，研究和复盘必须读取带时间戳的快照目录及 SHA-256，不能把 latest 当历史原件。
 
-每次 The Odds API 或 API-Football 快照完成后必须运行 `scripts/build_unified_outer_market_history.py`。该命令把两类来源规范化到 `data/external/outer_market_snapshots/history.csv`，并把具备胜平负、主亚洲盘及2.5球大小盘的安全快照写入 `data/manual/external_market_snapshot_history.csv`。内外盘配对、盘口变化特征和影子预测只能读取这两份统一历史，禁止继续读取停更的单来源副本。脚本按 `record_id`/`snapshot_id + match_id` 去重，回灌归档不会制造重复样本。
+每次 The Odds API 或 API-Football 快照完成后必须运行 `scripts/build_unified_outer_market_history.py`。该命令把 The Odds API、API-Football 及已采集的捷报亚洲让球快照规范化到 `data/external/outer_market_snapshots/history.csv`，并把具备胜平负、主亚洲盘及2.5球大小盘的安全快照写入 `data/manual/external_market_snapshot_history.csv`。内外盘配对、盘口变化特征和影子预测只能读取这两份统一历史，禁止继续读取停更的单来源副本。脚本按 `record_id`/`snapshot_id + match_id` 去重，回灌归档不会制造重复样本。
+
+当 The Odds API 返回 `quota_insufficient`、`no_routed_sports`、`not_configured`、`source_failed`、`unmatched` 或 `partial` 时，确认扫描和终版刷新会自动运行 `scripts/capture_nowscore_market.py` 的捷报后备采集，同时保留原始失败状态和 `trigger_status`，不得用后备成功掩盖主来源故障。后备取得赛前合格报价时，审计另写 `effective_status=available_via_nowscore`、`effective_source=nowscore` 和覆盖数量；总控不得只读主来源 `status` 后误报“无外盘”。采集仅覆盖仍在售、未开赛且场次号、主客队与开赛时间唯一匹配的比赛，并限制运行时长；失败写入独立审计，不阻断体彩官方扫描或正式终版。捷报原始页、六类报价与亚洲让球标准化快照保存在 `data/external/nowscore/snapshots/`，统一外盘历史构建器纳入合格亚洲让球行。当前该来源仍是外盘数据与影子研究后备，不补写生产模型专用的完整特征历史，也不授权提高投注权重或金额；模型缺完整安全快照时继续体彩市场基线。若统一历史 CSV 被 Excel 等程序占用，构建结果写入 `artifacts/data/unified_outer_market_pending/` 并标记 `deferred_file_locked`，总控不得声称已更新主历史，后续任务需重试合并。
 
 动态终版必须在官方体彩终版刷新后，对本时间组最新扫描 JSON 再运行：
 
@@ -131,6 +162,10 @@ The Odds API 的确认快照保存到 `data/external/the_odds_api_sporttery/snap
 
 ## 用户反馈详细度契约
 
+### 邪修方案：市场分歧观察（2026-09-07用户新增）
+
+从登记后的下一批未锁定分析起，每次报告及用户回复必须增加“邪修方案（独立影子研究）”，每日复盘单列该类。执行详细规则见 `docs/contrarian_market_shadow.md`。没有合格信号也保留分类并说明空方案原因。不得回填历史赛前方案。
+
 自动化阶段完成后的用户回复不得只给场次数和一句结论，必须在消息正文中提供可直接阅读的详细内容，不能要求用户自行打开附件才能知道结果；同时附上完整报告和 JSON 审计路径。
 
 - 10:00 预扫描和 11:05 确认：列出当日完整比赛行程表，至少包含比赛编号、赛事、主客队、北京时间开赛时间、销售状态、让球、SPF/RQSPF 是否可用、总进球/比分/半全场覆盖情况、所属终版时间组和硬锁时间。确认相对预扫描的新增、消失或停售场次必须单独列出。
@@ -150,7 +185,7 @@ API-Football 亚洲让球快照统一调用 `scripts/import_api_football_odds_sn
 
 ### 开售确认后的当日任务编排
 
-11:05 确认完成后，只根据 `on_sale` 比赛的开赛时间和停售时间，为每个有效时间组创建或更新后续终版任务：
+11:05 确认完成后，只根据 `on_sale` 比赛的开赛时间和停售时间，为每个有效时间组写入或更新注册表记录；然后只重排单一控制器心跳：
 
 - 常规比赛：安排在开赛前 90-60 分钟刷新官方赔率并完成终版分析、预测和投注方案判断。
 - 次日凌晨比赛：安排在前一晚停售前完成；工作日不得晚于 21:00-21:45，周末不得晚于 22:00-22:45。
@@ -158,7 +193,7 @@ API-Football 亚洲让球快照统一调用 `scripts/import_api_football_odds_sn
 - 后续任务必须选择本地项目主目录，不使用独立工作树；开始时遵守“项目文件衔接规则”，结束后写回审计、报告及符合闸门的台账变更。
 - 没有可售比赛、已停售、已开赛或官方赔率不可用时，不创建可入账方案，只生成 no-action/观察记录。
 - 每日注册表为 `artifacts/data/sporttery_task_registry_YYYY-MM-DD.json`，状态只允许 `scheduled`、`updated`、`completed`、`pending_schedule`、`failed`。
-- 调度接口失败时写入 `pending_schedule` 或 `failed`；下一次 11:05、13:00 或晚间兜底任务必须运行 `python scripts/run_sporttery_sales_window_scan.py retry --sales-day YYYY-MM-DD` 并重试，成功后回写同一记录。
+- 调度接口失败时写入 `pending_schedule` 或 `failed`，同时设置控制器 `pending_reschedule=true` 并通知用户；下一次固定唤醒必须运行 `python scripts/run_sporttery_sales_window_scan.py retry --sales-day YYYY-MM-DD` 并重试，成功且回读后才回写 `scheduled`。任务硬锁已过则只留失败审计，不补写方案。
 
 ## 每日 13:00 昨日复盘
 
@@ -202,6 +237,8 @@ API-Football 亚洲让球快照统一调用 `scripts/import_api_football_odds_sn
 提示词：
 
 > 在本地项目 `E:\ball-match-prediction-system\football-predictor` 执行停售前晚间终版分析。先读取当天 11:05 开售确认、The Odds API 确认快照审计、任务注册表、`data/manual/betting_plan_ledger.csv`、`artifacts/betting/betting_ledger_audit_latest.json` 和最新复盘报告；先运行注册表 `retry` 并补建仍为 `pending_schedule`、`failed`、`updated` 的未过期任务，回写同一记录。若当天确认没有 `on_sale` 场次或没有需要在停售前处理的凌晨场，只生成 no-action 审计并结束。否则重新抓取中国体彩 SPF/RQSPF、总进球、比分和半全场，并运行 `scripts/refresh_the_odds_for_sporttery.py --scan-json <本时间组最新扫描JSON> --snapshot-type final`；两类数据均禁止复用下午快照冒充终版数据。随后运行 `scripts/check_evening_final_analysis_gate.py --require-ready`。只有闸门允许、官方仍在售、预期场次和玩法覆盖完整、所有比赛尚未开赛时，才生成最终预测及最多 1 个稳健方案和 1 个价值方案，每个方案本金不超过 100 元，并追加台账。The Odds API 失败或未匹配时退回体彩市场基线，不能单独阻断官方在售确认，也不能授权或增加投入。21:45（周末 22:45）以后不得新增方案，只能核验与留档。数据源失败、赔率过期、场次消失或闸门未通过时全部降为观察。完成对应终版任务后把注册表状态更新为 `completed`。将最终中文报告和 JSON 审计写入 `artifacts/betting/` 与 `artifacts/data/`。
+
+终版编排强制顺序：官方终版抓取 → `check_evening_final_analysis_gate.py --require-ready` → `build_multi_play_betting_strategy.py --stake 100` → `validate_final_orchestration.py` → 硬锁前幂等写正式台账 → 再生成固定赔率、邪修和其他影子方案。影子v2是旁路研究，任何 `blocked`/`shadow_eligible=0` 都不得覆盖正式策略审计。若门禁READY但缺少正式策略审计，本阶段必须标记失败而不是completed；若正式策略审计有 `production_plan_rows>0` 却未在硬锁前写台账，也必须标记失败并通知用户。100元是每个正式稳健/价值方案的标准本金上限，不因外盘缺失或影子模型阻断而自动缩成2元；2元只用于明确标记的影子方案。
 
 > 若当次已取得安全外盘快照，先生成盘口模型预测 CSV，再用 `--handicap-model-csv` 生成投注候选；报告必须列出模型状态、融合权重、预测让胜平负概率、推荐项和降级原因。不得删除“模型不能单独触发投注”的闸门。
 

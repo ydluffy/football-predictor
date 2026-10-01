@@ -211,8 +211,8 @@ def group_on_sale_fixtures(fixtures: Iterable[dict[str, Any]], *, sales_day: dat
         if not clusters:
             clusters.append([fixture])
             continue
-        previous = parse_china_datetime(clusters[-1][-1]["kickoff"])
-        if kickoff - previous <= timedelta(minutes=90):
+        first_in_cluster = parse_china_datetime(clusters[-1][0]["kickoff"])
+        if kickoff - first_in_cluster <= timedelta(minutes=90):
             clusters[-1].append(fixture)
         else:
             clusters.append([fixture])

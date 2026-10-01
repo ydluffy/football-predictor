@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 import math
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
@@ -170,6 +171,7 @@ def normalize_the_odds_snapshot(snapshot_dir: str | Path) -> tuple[pd.DataFrame,
 
 def build_unified_histories(
     *, api_football_history: str | Path, the_odds_snapshot_root: str | Path,
+    nowscore_snapshot_root: str | Path | None = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame, dict[str, Any]]:
     api_path = Path(api_football_history)
     api = _read_csv(api_path)
@@ -187,6 +189,18 @@ def build_unified_histories(
             continue
         outer, model, info = normalize_the_odds_snapshot(audit_path.parent)
         outer_frames.append(outer); model_frames.append(model); snapshots.append(info)
+    nowscore_snapshots: list[dict[str, Any]] = []
+    nowscore_root = Path(nowscore_snapshot_root) if nowscore_snapshot_root is not None else None
+    if nowscore_root is not None and nowscore_root.exists():
+        for audit_path in sorted(nowscore_root.glob("*/audit.json")):
+            source_audit = json.loads(audit_path.read_text(encoding="utf-8"))
+            if source_audit.get("source") != "nowscore" or source_audit.get("status") not in {"complete", "partial"}:
+                continue
+            source_rows = _read_csv(audit_path.parent / "outer_market.csv")
+            if source_rows.empty:
+                continue
+            outer_frames.append(source_rows.reindex(columns=SNAPSHOT_COLUMNS))
+            nowscore_snapshots.append({"snapshot_dir": str(audit_path.parent), "outer_rows": len(source_rows)})
     unified = pd.concat(outer_frames, ignore_index=True, sort=False).reindex(columns=SNAPSHOT_COLUMNS)
     if not unified.empty:
         unified = unified.drop_duplicates("record_id", keep="last").sort_values(
@@ -200,6 +214,7 @@ def build_unified_histories(
     audit = {
         "schema_version": 1, "status": "ok", "api_football_rows": int(len(api)),
         "the_odds_snapshots": len(snapshots), "the_odds_outer_rows": sum(x["outer_rows"] for x in snapshots),
+        "nowscore_snapshots": len(nowscore_snapshots), "nowscore_outer_rows": sum(x["outer_rows"] for x in nowscore_snapshots),
         "unified_outer_rows": int(len(unified)), "unified_outer_matches": int(unified["match_id"].astype(str).replace("", pd.NA).nunique()),
         "model_history_rows": int(len(model_history)),
         "model_complete_rows": int(model_history["complete_for_shadow_inference"].map(_truthy).sum()) if not model_history.empty else 0,
@@ -207,3 +222,41 @@ def build_unified_histories(
         "snapshots": snapshots,
     }
     return unified, model_history, audit
+
+
+def persist_unified_histories(
+    outer: pd.DataFrame, model_history: pd.DataFrame, audit: dict[str, Any], *,
+    outer_path: str | Path, model_path: str | Path, audit_path: str | Path,
+    pending_root: str | Path,
+) -> dict[str, Any]:
+    """Persist histories without turning a user-held CSV lock into a source failure."""
+    outer_target, model_target, audit_target = map(Path, (outer_path, model_path, audit_path))
+    for path in (outer_target, model_target, audit_target):
+        path.parent.mkdir(parents=True, exist_ok=True)
+    result = dict(audit)
+    result.update({"outer_output": str(outer_target), "model_output": str(model_target)})
+    pending: Path | None = None
+    try:
+        outer.to_csv(outer_target, index=False, encoding="utf-8-sig")
+        model_history.to_csv(model_target, index=False, encoding="utf-8-sig")
+        result["persistence_status"] = "complete"
+    except PermissionError as exc:
+        stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+        pending = Path(pending_root) / stamp
+        pending.mkdir(parents=True, exist_ok=False)
+        outer.to_csv(pending / "outer_market_history.csv", index=False, encoding="utf-8-sig")
+        model_history.to_csv(pending / "external_market_snapshot_history.csv", index=False, encoding="utf-8-sig")
+        result.update({"persistence_status": "deferred_file_locked", "pending_dir": str(pending),
+                       "persistence_error": f"{type(exc).__name__}: target CSV is locked"})
+    try:
+        audit_target.write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    except PermissionError:
+        if pending is None:
+            stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ")
+            pending = Path(pending_root) / stamp
+            pending.mkdir(parents=True, exist_ok=False)
+            result.update({"persistence_status": "deferred_file_locked", "pending_dir": str(pending),
+                           "persistence_error": "PermissionError: audit target is locked"})
+        result["deferred_audit_path"] = str(pending / "audit.json")
+        (pending / "audit.json").write_text(json.dumps(result, ensure_ascii=False, indent=2), encoding="utf-8")
+    return result

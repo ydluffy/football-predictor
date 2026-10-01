@@ -67,10 +67,13 @@ def merge_handicap_model_features(markets: pd.DataFrame, prediction_csv: str) ->
 
 
 def main() -> None:
+    if hasattr(sys.stdout, "reconfigure"):
+        sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(
         description="Build multi-play Sporttery betting candidates from SPF/RQSPF market snapshots."
     )
     parser.add_argument("--market-csv", required=True)
+    parser.add_argument("--sales-day", default="", help="Filter kickoff to the Sporttery sales window, 10:00 through next-day 10:00.")
     parser.add_argument("--start-after", default="", help="Optional kickoff lower bound, e.g. 2026-07-14 11:00.")
     parser.add_argument("--start-before", default="", help="Optional kickoff upper bound, e.g. 2026-07-15 12:00.")
     parser.add_argument("--stake", type=float, default=100.0, help="Total stake per betting plan.")
@@ -79,6 +82,12 @@ def main() -> None:
     parser.add_argument("--fixed-odds-max", type=float, default=10.00)
     parser.add_argument("--fixed-odds-target", type=float, default=8.00)
     parser.add_argument("--fixed-odds-max-legs", type=int, default=4)
+    parser.add_argument(
+        "--max-shared-production-matches",
+        type=int,
+        default=1,
+        help="Maximum matches shared by SAFE and VALUE production plans; use 0 for the research-only independent-ticket candidate.",
+    )
     parser.add_argument("--signal-csv", default="", help="Optional market signal feature CSV.")
     parser.add_argument("--handicap-model-csv", default="", help="Optional controlled handicap model predictions.")
     parser.add_argument("--plans-output", required=True)
@@ -89,6 +98,13 @@ def main() -> None:
 
     market_path = _ROOT / args.market_csv
     markets = pd.read_csv(market_path).fillna("")
+    if args.sales_day:
+        if "kickoff_time" not in markets.columns:
+            raise ValueError("market CSV has no kickoff_time column for --sales-day")
+        sales_start = pd.Timestamp(args.sales_day) + pd.Timedelta(hours=10)
+        sales_end = sales_start + pd.Timedelta(days=1)
+        kickoff = pd.to_datetime(markets["kickoff_time"], errors="coerce")
+        markets = markets[kickoff.ge(sales_start) & kickoff.lt(sales_end)].copy()
     markets = merge_signal_features(markets, args.signal_csv)
     markets = merge_handicap_model_features(markets, args.handicap_model_csv)
     if not markets.empty and "kickoff_time" in markets.columns:
@@ -108,9 +124,50 @@ def main() -> None:
         fixed_odds_max=args.fixed_odds_max,
         fixed_odds_target=args.fixed_odds_target,
         fixed_odds_max_legs=args.fixed_odds_max_legs,
+        max_shared_production_matches=args.max_shared_production_matches,
     )
     plans_frame = plans_to_frame(plans)
     matches_frame = pd.DataFrame(match_rows)
+
+    def normalize_match_number(value: object) -> str:
+        text = str(value).strip()
+        return text.zfill(3) if text.isdigit() else text
+
+    production_rejections: list[dict[str, object]] = []
+    processed_numbers: set[str] = set()
+    for _, row in matches_frame.iterrows():
+        match_number = normalize_match_number(row.get("match_number", ""))
+        processed_numbers.add(match_number)
+        probability = float(row.get("favorite_probability", 0.0) or 0.0)
+        odds = float(row.get("favorite_odds", 0.0) or 0.0)
+        handicap_eligible = bool(row.get("handicap_production_eligible", False))
+        spf_eligible = probability >= 0.52 and odds <= 1.85
+        if spf_eligible or handicap_eligible:
+            continue
+        reasons: list[str] = []
+        if probability < 0.52:
+            reasons.append("favorite_probability_below_0.52")
+        if odds > 1.85:
+            reasons.append("favorite_odds_above_1.85")
+        if not handicap_eligible:
+            reasons.append("no_model_backed_handicap")
+        production_rejections.append({
+            "match_number": match_number,
+            "match_name": row.get("match_name", ""),
+            "favorite_probability": probability,
+            "favorite_odds": odds,
+            "reasons": reasons,
+        })
+
+    if "match_number" in markets.columns:
+        for _, row in markets.iterrows():
+            match_number = normalize_match_number(row.get("match_number", ""))
+            if match_number and match_number not in processed_numbers:
+                production_rejections.append({
+                    "match_number": match_number,
+                    "match_name": f'{row.get("home_team", "")} vs {row.get("away_team", "")}',
+                    "reasons": ["incomplete_spf_or_rqspf_market"],
+                })
 
     plans_output = _ROOT / args.plans_output
     matches_output = _ROOT / args.matches_output
@@ -147,6 +204,7 @@ def main() -> None:
             ),
         },
         "handicap_model_rows": int(markets.get("handicap_model_usage", pd.Series(dtype=str)).astype(str).isin(["production_auxiliary", "limited_auxiliary"]).sum()),
+        "production_rejections": production_rejections,
         "plans_output": str(plans_output),
         "matches_output": str(matches_output),
         "report_output": str(report_output),

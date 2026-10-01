@@ -8,6 +8,7 @@ const items = [
   { href: "/controller", label: "总控助手" },
   { href: "/fixtures", label: "比赛" },
   { href: "/predictions", label: "预测" },
+  { href: "/odds", label: "赔率" },
   { href: "/review", label: "复盘" },
   { href: "/setup", label: "系统" },
 ];

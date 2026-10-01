@@ -20,6 +20,7 @@ if str(SRC) not in sys.path:
 from backtest_market_movement_value import build_external_movement
 from research_inner_outer_market_patterns import normalize_team
 from world_cup.sporttery_markets import build_sporttery_line_movement_features
+from data.competition_registry import load_team_alias_registry, normalize_alias
 
 
 TEAM_ALIASES = {
@@ -34,7 +35,9 @@ TEAM_ALIASES = {
 
 def team_key(value: object) -> str:
     text = str(value or "").strip()
-    return TEAM_ALIASES.get(text, normalize_team(text))
+    legacy = TEAM_ALIASES.get(text, text)
+    canonical = load_team_alias_registry().resolve(legacy) or legacy
+    return normalize_alias(canonical)
 
 
 def to_float(value: object) -> float | None:
@@ -245,11 +248,16 @@ def note_for(row: dict[str, Any]) -> str:
 
 
 def render_report(features: pd.DataFrame) -> str:
+    external_covered = (
+        int(pd.to_numeric(features["external_latest_home_spread_point"], errors="coerce").notna().sum())
+        if "external_latest_home_spread_point" in features
+        else 0
+    )
     lines = [
         "# 每日盘口信号特征",
         "",
         f"- 比赛数：{len(features)}",
-        f"- 有外盘覆盖：{int(features['external_latest_favorite'].fillna('').astype(str).ne('').sum()) if 'external_latest_favorite' in features else 0}",
+        f"- 有外盘覆盖：{external_covered}",
         "",
         "| 日期 | 编号 | 比赛 | 体彩让球 | 外盘让球 | 内外盘关系 | 大小球 | 风险 | 说明 |",
         "|---|---|---|---:|---:|---|---|---|---|",
@@ -298,10 +306,15 @@ def main() -> None:
     audit_output.parent.mkdir(parents=True, exist_ok=True)
     features.to_csv(output, index=False, encoding="utf-8-sig")
     report_output.write_text(render_report(features), encoding="utf-8")
+    external_covered = (
+        int(pd.to_numeric(features["external_latest_home_spread_point"], errors="coerce").notna().sum())
+        if "external_latest_home_spread_point" in features
+        else 0
+    )
     audit = {
         "ok": True,
         "rows": int(len(features)),
-        "external_covered_rows": int(features["external_latest_favorite"].fillna("").astype(str).ne("").sum()) if "external_latest_favorite" in features else 0,
+        "external_covered_rows": external_covered,
         "output": str(output),
         "report_output": str(report_output),
     }
