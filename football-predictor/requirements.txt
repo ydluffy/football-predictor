@@ -8,7 +8,7 @@ annotated-doc==0.0.5
     # via fastapi
 annotated-types==0.8.0
     # via pydantic
-anyio==4.14.2
+anyio==4.15.1
     # via
     #   httpx2
     #   starlette
@@ -16,7 +16,7 @@ beautifulsoup4==4.15.0
     # via football-predictor (pyproject.toml)
 boolean-py==5.0
     # via license-expression
-build==1.5.0
+build==1.6.1
     # via pip-tools
 cachecontrol==0.14.4
     # via
@@ -24,7 +24,7 @@ cachecontrol==0.14.4
     #   pip-audit
 certifi==2026.7.22
     # via requests
-charset-normalizer==3.5.1
+charset-normalizer==3.5.2
     # via requests
 click==8.5.0
     # via
@@ -41,7 +41,7 @@ defusedxml==0.7.1
     # via py-serializable
 detect-secrets==1.5.0
     # via football-predictor (pyproject.toml)
-fastapi==0.141.1
+fastapi==0.143.0
     # via football-predictor (pyproject.toml)
 filelock==3.32.4
     # via cachecontrol
@@ -49,20 +49,20 @@ h11==0.16.0
     # via
     #   httpcore2
     #   uvicorn
-httpcore2==2.12.0
+httpcore2==2.13.1
     # via httpx2
-httpx2==2.12.0
+httpx2==2.13.1
     # via football-predictor (pyproject.toml)
-idna==3.19
+idna==3.20
     # via
     #   anyio
     #   httpx2
     #   requests
-iniconfig==2.3.0
+iniconfig==2.3.1
     # via pytest
-joblib==1.5.3
+joblib==1.6.0
     # via scikit-learn
-librt==0.15.0
+librt==0.16.0
     # via mypy
 license-expression==30.4.4
     # via cyclonedx-python-lib
@@ -74,13 +74,13 @@ markdown-it-py==4.2.0
     # via rich
 mdurl==0.1.2
     # via markdown-it-py
-msgpack==1.2.2
+msgpack==1.2.3
     # via cachecontrol
 mypy==1.20.2
     # via football-predictor (pyproject.toml)
 mypy-extensions==1.1.0
     # via mypy
-narwhals==2.25.0
+narwhals==2.26.0
     # via lightgbm
 numpy==2.5.2
     # via
@@ -98,37 +98,37 @@ packaging==26.3
     #   pip-requirements-parser
     #   pytest
     #   wheel
-pandas==3.0.5
+pandas==3.0.6
     # via football-predictor (pyproject.toml)
 pathspec==1.1.1
     # via mypy
-pip-api==0.0.34
+pip-api==0.0.35
     # via pip-audit
 pip-audit==2.10.1
     # via football-predictor (pyproject.toml)
 pip-requirements-parser==32.0.1
     # via pip-audit
-pip-tools==7.6.1
+pip-tools==7.6.2
     # via football-predictor (pyproject.toml)
-platformdirs==4.11.4
+platformdirs==4.12.4
     # via pip-audit
 pluggy==1.6.0
     # via pytest
 py-serializable==2.1.0
     # via cyclonedx-python-lib
-pydantic==2.13.4
+pydantic==2.14.0
     # via
     #   fastapi
     #   football-predictor (pyproject.toml)
-pydantic-core==2.46.4
+pydantic-core==2.50.0
     # via pydantic
 pygments==2.21.0
     # via
     #   pytest
     #   rich
-pyparsing==3.3.2
+pyparsing==3.3.3
     # via pip-requirements-parser
-pyproject-hooks==1.2.0
+pyproject-hooks==1.3.3
     # via
     #   build
     #   pip-tools
@@ -146,9 +146,9 @@ requests==2.34.2
     #   pip-audit
 rich==15.0.0
     # via pip-audit
-ruff==0.16.4
+ruff==0.16.10
     # via football-predictor (pyproject.toml)
-scikit-learn==1.8.0
+scikit-learn==1.9.1
     # via football-predictor (pyproject.toml)
 scipy==1.18.1
     # via
@@ -158,13 +158,13 @@ six==1.17.0
     # via python-dateutil
 sortedcontainers==2.4.0
     # via cyclonedx-python-lib
-soupsieve==2.9.2
+soupsieve==2.10
     # via beautifulsoup4
-starlette==1.6.0
+starlette==1.7.0
     # via fastapi
-threadpoolctl==3.6.0
+threadpoolctl==3.7.0
     # via scikit-learn
-tomli==2.4.1
+tomli==2.5.0
     # via pip-audit
 tomli-w==1.2.0
     # via pip-audit
@@ -184,11 +184,11 @@ typing-inspection==0.4.4
     # via
     #   fastapi
     #   pydantic
-tzdata==2026.3
+tzdata==2026.5
     # via pandas
-urllib3==2.7.0
+urllib3==2.8.0
     # via requests
-uvicorn==0.52.4
+uvicorn==0.54.0
     # via football-predictor (pyproject.toml)
 wheel==0.48.0
     # via pip-tools
