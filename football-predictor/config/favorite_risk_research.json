@@ -1,0 +1,12 @@
+{
+  "status": "retrospective_diagnostic_only",
+  "report": "docs/favorite_risk_research_20261020.md",
+  "artifact_directory": "artifacts/eval/favorite_risks_20261020_v3",
+  "favorite_minimum_no_vig_probability": 0.5,
+  "risk_categories": ["favorite_loss", "favorite_draw", "win_not_full_cover"],
+  "production_enabled": false,
+  "new_model_trained": false,
+  "new_betting_rule_enabled": false,
+  "real_money_allowed": false,
+  "prospective_validation_complete": false
+}

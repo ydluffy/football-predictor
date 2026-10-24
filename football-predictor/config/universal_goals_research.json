@@ -1,0 +1,21 @@
+{
+  "model_id": "universal_club_form_poisson_v1_research",
+  "model_artifact": "artifacts/eval/universal_goals_20261019_run2/model.json",
+  "evaluation": "artifacts/eval/universal_goals_20261019_run2/summary.json",
+  "status": "research_candidate_pending_forward_validation",
+  "live_controller_enabled": false,
+  "prospective_shadow_enabled": true,
+  "controller_research_hook_enabled": true,
+  "prospective_effective_from": "2026-10-19T12:15:21+08:00",
+  "production_probability_change_allowed": false,
+  "uses_odds": false,
+  "min_team_games": 5,
+  "max_team_history_age_days": 120,
+  "competition_codes": {
+    "ENG_PREMIER_LEAGUE": "E0", "GER_BUNDESLIGA": "D1",
+    "FRA_LIGUE_1": "F1", "FRA_LIGUE_2": "F2", "ITA_SERIE_A": "I1",
+    "NED_EREDIVISIE": "N1", "POR_PRIMEIRA_LIGA": "P1",
+    "ESP_LA_LIGA": "SP1", "SWE_ALLSVENSKAN": "SWE", "BRA_SERIE_A": "BRA"
+  },
+  "routing_policy": "Specialist first; READY-gated universal fallback-only prospective shadow with separate scoring. No production probability or stake change. Unknown teams, cups and national teams must skip."
+}
