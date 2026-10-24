@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { verifiedArtifactUpsert } from "@/lib/verifiedArtifactUpsert";
+import { localArtifactsEnabled } from "@/lib/localArtifacts";
 import { requireSupabaseAdmin } from "@/lib/requireSupabaseAdmin";
 import { loadControllerState, loadDailyOverrideBySalesDay, loadTaskRegistryBySalesDay } from "@/lib/controllerArtifacts";
 
@@ -14,14 +16,13 @@ export async function POST(req: Request) {
 
   const { sb, response } = requireSupabaseAdmin(req);
   if (!sb) return response;
+  if (!localArtifactsEnabled()) return NextResponse.json({ error: "local_artifacts_disabled" }, { status: 503 });
 
   const controllerPayload = await loadControllerState();
   if (controllerPayload) {
     const payloadAny: any = controllerPayload;
     const nextRequiredAt = payloadAny?.next_required_at ?? payloadAny?.next_required_at ?? null;
-    const { error } = await sb
-      .from("automation_controller_state")
-      .upsert(
+    const { error } = await verifiedArtifactUpsert(sb, "automation_controller_state", [
         {
           id: "default",
           controller_month: payloadAny?.controller_month ?? null,
@@ -31,8 +32,7 @@ export async function POST(req: Request) {
           last_reschedule_target: payloadAny?.last_reschedule_target ?? null,
           next_required_at: nextRequiredAt,
           payload: controllerPayload,
-        } as any,
-        { onConflict: "id" },
+        }], "id",
       );
     if (error) return NextResponse.json({ error: error.message }, { status: 500 });
   }
@@ -43,32 +43,26 @@ export async function POST(req: Request) {
 
     if (override) {
       const payloadAny: any = override;
-      const { error } = await sb
-        .from("automation_daily_overrides")
-        .upsert(
+      const { error } = await verifiedArtifactUpsert(sb, "automation_daily_overrides", [
           {
             sales_day: salesDay,
             requested_at: payloadAny?.requested_at ?? null,
             requested_by: payloadAny?.requested_by ?? null,
             official_confirmed_count: payloadAny?.official_confirmed_count ?? null,
             payload: override,
-          } as any,
-          { onConflict: "sales_day" },
+          }], "sales_day",
         );
       if (error) return NextResponse.json({ error: error.message, sales_day: salesDay, table: "automation_daily_overrides" }, { status: 500 });
     }
 
     if (registry) {
       const payloadAny: any = registry;
-      const { error } = await sb
-        .from("automation_task_registries")
-        .upsert(
+      const { error } = await verifiedArtifactUpsert(sb, "automation_task_registries", [
           {
             sales_day: salesDay,
             registry_updated_at: payloadAny?.updated_at ?? null,
             payload: registry,
-          } as any,
-          { onConflict: "sales_day" },
+          }], "sales_day",
         );
       if (error) return NextResponse.json({ error: error.message, sales_day: salesDay, table: "automation_task_registries" }, { status: 500 });
     }
@@ -77,6 +71,7 @@ export async function POST(req: Request) {
   }
 
   return NextResponse.json({
+    verified: Boolean(controllerPayload),
     synced_controller_state: Boolean(controllerPayload),
     synced_sales_days: results,
   });

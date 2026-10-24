@@ -36,6 +36,18 @@ def _plays(number: str = "002") -> list[dict[str, str]]:
     ]
 
 
+def test_time_groups_do_not_chain_across_many_hours():
+    fixtures = [
+        {"match_number": f"{index:03d}", "kickoff": f"2026-09-19T{hour:02d}:00:00+08:00", "sale_status": "on_sale"}
+        for index, hour in enumerate((17, 18, 19, 20), start=1)
+    ]
+
+    groups = group_on_sale_fixtures(fixtures, sales_day=date(2026, 9, 19))
+
+    assert [len(group.fixtures) for group in groups] == [2, 2]
+    assert [group.label for group in groups] == ["17:00-18:00", "19:00-20:00"]
+
+
 def test_1000_empty_batch_is_prelisted_and_never_claims_no_matches(tmp_path):
     scan = build_scan_result(
         stage="preopen",

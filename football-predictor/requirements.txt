@@ -22,7 +22,7 @@ cachecontrol==0.14.4
     # via
     #   cachecontrol
     #   pip-audit
-certifi==2026.7.22
+certifi==2026.10.23
     # via requests
 charset-normalizer==3.5.1
     # via requests
@@ -43,7 +43,7 @@ detect-secrets==1.5.0
     # via football-predictor (pyproject.toml)
 fastapi==0.141.1
     # via football-predictor (pyproject.toml)
-filelock==3.32.4
+filelock==4.2.4
     # via cachecontrol
 h11==0.16.0
     # via
@@ -186,7 +186,7 @@ typing-inspection==0.4.4
     #   pydantic
 tzdata==2026.3
     # via pandas
-urllib3==2.7.0
+urllib3==2.8.0
     # via requests
 uvicorn==0.52.4
     # via football-predictor (pyproject.toml)
@@ -200,5 +200,5 @@ pip==26.2.1
     # via
     #   pip-api
     #   pip-tools
-setuptools==84.0.0
+setuptools==84.2.1
     # via pip-tools

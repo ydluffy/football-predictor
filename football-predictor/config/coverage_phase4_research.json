@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "research_only": true,
+  "production_enabled": false,
+  "live_routing_enabled": false,
+  "prospective_freeze_integration_complete": false,
+  "candidates": {
+    "E1": {
+      "artifact": "artifacts/eval/coverage_phase4_20261021/models.json",
+      "status": "research_not_better_than_market"
+    },
+    "JPN": {
+      "artifact": "artifacts/eval/coverage_phase4_20261021/models.json",
+      "status": "research_no_market_gain_demonstrated"
+    },
+    "J2": {
+      "artifact": "artifacts/eval/coverage_phase4_20261021/models.json",
+      "status": "blocked_stale_current_history"
+    },
+    "CL": {
+      "artifact": "artifacts/eval/champions_league_baseline_20261021/model.json",
+      "status": "small_holdout_no_market_comparator"
+    }
+  }
+}

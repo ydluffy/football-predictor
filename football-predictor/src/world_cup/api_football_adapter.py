@@ -97,6 +97,8 @@ def api_fixture_rows_to_frame(rows: list[dict[str, Any]]) -> pd.DataFrame:
         out.append(
             {
                 "source_fixture_id": fixture_id,
+                "source_home_team_id": (teams.get("home") or {}).get("id"),
+                "source_away_team_id": (teams.get("away") or {}).get("id"),
                 "date": str(fixture.get("date", ""))[:10],
                 "kickoff_time": str(fixture.get("date", "")),
                 "home_team": normalize_national_team((teams.get("home") or {}).get("name", "")),

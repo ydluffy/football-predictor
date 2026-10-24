@@ -90,6 +90,8 @@
 
 ### 数据同步（Supabase）
 
+2026-09-04 起由唯一生产总控在确认、分析、复盘和状态重排后调用 `football-predictor/scripts/run_controller_data_sync.py`。日常仅同步受影响销售日，失败步骤存入 `artifacts/data/controller_sync/outbox.json`，后续唤醒补偿。成功必须通过数据库读回校验，不能将本地已完成等同于网页已更新。详见 `football-predictor/docs/scheduled_tasks.md` 的“阶段完成后数据同步与失败补偿”。
+
 Web 与 Python 的分工建议：
 
 - Web：展示与在线交互，读写业务表

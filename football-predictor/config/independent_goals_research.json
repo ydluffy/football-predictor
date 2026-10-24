@@ -1,0 +1,18 @@
+{
+  "model_id": "independent_attack_defence_poisson_v2_current_season_research",
+  "status": "research_only",
+  "model_artifact": "artifacts/eval/independent_refresh_20261016T152412Z/research_models.json",
+  "evaluation_report": "artifacts/eval/independent_goals_20261012/report.md",
+  "uses_odds_as_model_inputs": false,
+  "output": [
+    "score_distribution",
+    "1x2",
+    "nine_bin_margin",
+    "integer_handicap_probability"
+  ],
+  "production_probability_change_allowed": false,
+  "real_money_allowed": false,
+  "reason": "Current-season refit with 440 verified finished fixtures; inherited prior calibration; forward validation required.",
+  "refresh_audit": "artifacts/eval/independent_refresh_20261016T152412Z/audit.json",
+  "history_warning_days": 45
+}

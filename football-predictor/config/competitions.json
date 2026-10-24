@@ -11,7 +11,13 @@
       "total_rounds": 38,
       "model_group": "european_top_league",
       "historical_model_coverage": true,
-      "aliases": ["E0", "EPL", "Premier League", "English Premier League", "英超"]
+      "aliases": [
+        "E0",
+        "EPL",
+        "Premier League",
+        "English Premier League",
+        "英超"
+      ]
     },
     {
       "competition_id": "ENG_CHAMPIONSHIP",
@@ -23,7 +29,12 @@
       "total_rounds": 46,
       "model_group": "english_lower_league",
       "historical_model_coverage": true,
-      "aliases": ["E1", "Championship", "EFL Championship", "英冠"]
+      "aliases": [
+        "E1",
+        "Championship",
+        "EFL Championship",
+        "英冠"
+      ]
     },
     {
       "competition_id": "ENG_LEAGUE_ONE",
@@ -35,7 +46,12 @@
       "total_rounds": 46,
       "model_group": "english_lower_league",
       "historical_model_coverage": true,
-      "aliases": ["E2", "League One", "EFL League One", "英甲"]
+      "aliases": [
+        "E2",
+        "League One",
+        "EFL League One",
+        "英甲"
+      ]
     },
     {
       "competition_id": "ENG_LEAGUE_TWO",
@@ -47,7 +63,12 @@
       "total_rounds": 46,
       "model_group": "english_lower_league",
       "historical_model_coverage": true,
-      "aliases": ["E3", "League Two", "EFL League Two", "英乙"]
+      "aliases": [
+        "E3",
+        "League Two",
+        "EFL League Two",
+        "英乙"
+      ]
     },
     {
       "competition_id": "ENG_NATIONAL_LEAGUE",
@@ -59,7 +80,12 @@
       "total_rounds": 46,
       "model_group": "english_lower_league",
       "historical_model_coverage": true,
-      "aliases": ["EC", "National League", "Conference", "英议联"]
+      "aliases": [
+        "EC",
+        "National League",
+        "Conference",
+        "英议联"
+      ]
     },
     {
       "competition_id": "ESP_LA_LIGA",
@@ -71,7 +97,13 @@
       "total_rounds": 38,
       "model_group": "european_top_league",
       "historical_model_coverage": false,
-      "aliases": ["SP1", "La Liga", "LaLiga", "Primera Division", "西甲"]
+      "aliases": [
+        "SP1",
+        "La Liga",
+        "LaLiga",
+        "Primera Division",
+        "西甲"
+      ]
     },
     {
       "competition_id": "GER_BUNDESLIGA",
@@ -83,7 +115,11 @@
       "total_rounds": 34,
       "model_group": "european_top_league",
       "historical_model_coverage": false,
-      "aliases": ["D1", "Bundesliga", "德甲"]
+      "aliases": [
+        "D1",
+        "Bundesliga",
+        "德甲"
+      ]
     },
     {
       "competition_id": "FRA_LIGUE_1",
@@ -95,7 +131,12 @@
       "total_rounds": 34,
       "model_group": "european_top_league",
       "historical_model_coverage": false,
-      "aliases": ["F1", "Ligue 1", "Ligue1", "法甲"]
+      "aliases": [
+        "F1",
+        "Ligue 1",
+        "Ligue1",
+        "法甲"
+      ]
     },
     {
       "competition_id": "ITA_SERIE_A",
@@ -107,7 +148,12 @@
       "total_rounds": 38,
       "model_group": "european_top_league",
       "historical_model_coverage": false,
-      "aliases": ["I1", "Serie A", "SerieA", "意甲"]
+      "aliases": [
+        "I1",
+        "Serie A",
+        "SerieA",
+        "意甲"
+      ]
     },
     {
       "competition_id": "NED_EREDIVISIE",
@@ -119,7 +165,11 @@
       "total_rounds": 34,
       "model_group": "european_top_league",
       "historical_model_coverage": false,
-      "aliases": ["N1", "Eredivisie", "荷甲"]
+      "aliases": [
+        "N1",
+        "Eredivisie",
+        "荷甲"
+      ]
     },
     {
       "competition_id": "POR_PRIMEIRA_LIGA",
@@ -131,7 +181,12 @@
       "total_rounds": 34,
       "model_group": "european_top_league",
       "historical_model_coverage": false,
-      "aliases": ["P1", "Primeira Liga", "Liga Portugal", "葡超"]
+      "aliases": [
+        "P1",
+        "Primeira Liga",
+        "Liga Portugal",
+        "葡超"
+      ]
     },
     {
       "competition_id": "JPN_J1_LEAGUE",
@@ -143,7 +198,14 @@
       "total_rounds": 38,
       "model_group": "east_asia_league",
       "historical_model_coverage": false,
-      "aliases": ["J1", "J League", "J.League", "J1 League", "日职", "日职联"]
+      "aliases": [
+        "J1",
+        "J League",
+        "J.League",
+        "J1 League",
+        "日职",
+        "日职联"
+      ]
     },
     {
       "competition_id": "JPN_J2_LEAGUE",
@@ -155,7 +217,11 @@
       "total_rounds": 38,
       "model_group": "east_asia_league",
       "historical_model_coverage": false,
-      "aliases": ["J2", "J2 League", "日职乙"]
+      "aliases": [
+        "J2",
+        "J2 League",
+        "日职乙"
+      ]
     },
     {
       "competition_id": "KOR_K_LEAGUE_1",
@@ -167,7 +233,12 @@
       "total_rounds": 38,
       "model_group": "east_asia_league",
       "historical_model_coverage": false,
-      "aliases": ["K League 1", "K-League", "韩职", "韩K联"]
+      "aliases": [
+        "K League 1",
+        "K-League",
+        "韩职",
+        "韩K联"
+      ]
     },
     {
       "competition_id": "FIN_VEIKKAUSLIIGA",
@@ -179,7 +250,10 @@
       "total_rounds": null,
       "model_group": "nordic_league",
       "historical_model_coverage": false,
-      "aliases": ["Veikkausliiga", "芬超"]
+      "aliases": [
+        "Veikkausliiga",
+        "芬超"
+      ]
     },
     {
       "competition_id": "SWE_ALLSVENSKAN",
@@ -191,7 +265,10 @@
       "total_rounds": 30,
       "model_group": "nordic_league",
       "historical_model_coverage": false,
-      "aliases": ["Allsvenskan", "瑞超"]
+      "aliases": [
+        "Allsvenskan",
+        "瑞超"
+      ]
     },
     {
       "competition_id": "BRA_SERIE_A",
@@ -203,7 +280,11 @@
       "total_rounds": 38,
       "model_group": "south_america_league",
       "historical_model_coverage": false,
-      "aliases": ["Brazil Serie A", "Brasileirao", "巴甲"]
+      "aliases": [
+        "Brazil Serie A",
+        "Brasileirao",
+        "巴甲"
+      ]
     },
     {
       "competition_id": "UEFA_CHAMPIONS_LEAGUE",
@@ -215,7 +296,12 @@
       "total_rounds": null,
       "model_group": "club_knockout_cup",
       "historical_model_coverage": false,
-      "aliases": ["UEFA Champions League", "Champions League", "UCL", "欧冠"]
+      "aliases": [
+        "UEFA Champions League",
+        "Champions League",
+        "UCL",
+        "欧冠"
+      ]
     },
     {
       "competition_id": "UEFA_EUROPA_LEAGUE",
@@ -227,7 +313,13 @@
       "total_rounds": null,
       "model_group": "club_knockout_cup",
       "historical_model_coverage": false,
-      "aliases": ["UEFA Europa League", "Europa League", "UEL", "欧联", "欧罗巴"]
+      "aliases": [
+        "UEFA Europa League",
+        "Europa League",
+        "UEL",
+        "欧联",
+        "欧罗巴"
+      ]
     },
     {
       "competition_id": "UEFA_CONFERENCE_LEAGUE",
@@ -239,7 +331,12 @@
       "total_rounds": null,
       "model_group": "club_knockout_cup",
       "historical_model_coverage": false,
-      "aliases": ["UEFA Conference League", "Europa Conference League", "UECL", "欧协联"]
+      "aliases": [
+        "UEFA Conference League",
+        "Europa Conference League",
+        "UECL",
+        "欧协联"
+      ]
     },
     {
       "competition_id": "ENG_FA_CUP",
@@ -251,7 +348,12 @@
       "total_rounds": null,
       "model_group": "club_knockout_cup",
       "historical_model_coverage": false,
-      "aliases": ["FA Cup", "English FA Cup", "英足总杯", "足总杯"]
+      "aliases": [
+        "FA Cup",
+        "English FA Cup",
+        "英足总杯",
+        "足总杯"
+      ]
     },
     {
       "competition_id": "ESP_COPA_DEL_REY",
@@ -263,7 +365,11 @@
       "total_rounds": null,
       "model_group": "club_knockout_cup",
       "historical_model_coverage": false,
-      "aliases": ["Copa del Rey", "Spanish Copa del Rey", "国王杯"]
+      "aliases": [
+        "Copa del Rey",
+        "Spanish Copa del Rey",
+        "国王杯"
+      ]
     },
     {
       "competition_id": "GER_DFB_POKAL",
@@ -275,7 +381,11 @@
       "total_rounds": null,
       "model_group": "club_knockout_cup",
       "historical_model_coverage": false,
-      "aliases": ["DFB-Pokal", "German Cup", "德国杯"]
+      "aliases": [
+        "DFB-Pokal",
+        "German Cup",
+        "德国杯"
+      ]
     },
     {
       "competition_id": "FRA_COUPE_DE_FRANCE",
@@ -287,7 +397,11 @@
       "total_rounds": null,
       "model_group": "club_knockout_cup",
       "historical_model_coverage": false,
-      "aliases": ["Coupe de France", "French Cup", "法国杯"]
+      "aliases": [
+        "Coupe de France",
+        "French Cup",
+        "法国杯"
+      ]
     },
     {
       "competition_id": "ITA_COPPA_ITALIA",
@@ -299,7 +413,11 @@
       "total_rounds": null,
       "model_group": "club_knockout_cup",
       "historical_model_coverage": false,
-      "aliases": ["Coppa Italia", "Italian Cup", "意大利杯"]
+      "aliases": [
+        "Coppa Italia",
+        "Italian Cup",
+        "意大利杯"
+      ]
     },
     {
       "competition_id": "JPN_EMPERORS_CUP",
@@ -311,7 +429,11 @@
       "total_rounds": null,
       "model_group": "club_knockout_cup",
       "historical_model_coverage": false,
-      "aliases": ["Emperor's Cup", "Emperors Cup", "天皇杯"]
+      "aliases": [
+        "Emperor's Cup",
+        "Emperors Cup",
+        "天皇杯"
+      ]
     },
     {
       "competition_id": "FIFA_WORLD_CUP",
@@ -323,7 +445,11 @@
       "total_rounds": null,
       "model_group": "national_team_major",
       "historical_model_coverage": true,
-      "aliases": ["FIFA World Cup", "World Cup", "世界杯"]
+      "aliases": [
+        "FIFA World Cup",
+        "World Cup",
+        "世界杯"
+      ]
     },
     {
       "competition_id": "FIFA_WORLD_CUP_QUALIFICATION",
@@ -335,7 +461,11 @@
       "total_rounds": null,
       "model_group": "national_team_qualifier",
       "historical_model_coverage": true,
-      "aliases": ["FIFA World Cup qualification", "World Cup qualification", "世预赛"]
+      "aliases": [
+        "FIFA World Cup qualification",
+        "World Cup qualification",
+        "世预赛"
+      ]
     },
     {
       "competition_id": "UEFA_EURO",
@@ -347,7 +477,11 @@
       "total_rounds": null,
       "model_group": "national_team_major",
       "historical_model_coverage": true,
-      "aliases": ["UEFA Euro", "European Championship", "欧洲杯"]
+      "aliases": [
+        "UEFA Euro",
+        "European Championship",
+        "欧洲杯"
+      ]
     },
     {
       "competition_id": "UEFA_EURO_QUALIFICATION",
@@ -359,7 +493,11 @@
       "total_rounds": null,
       "model_group": "national_team_qualifier",
       "historical_model_coverage": true,
-      "aliases": ["UEFA Euro qualification", "European Championship qualification", "欧预赛"]
+      "aliases": [
+        "UEFA Euro qualification",
+        "European Championship qualification",
+        "欧预赛"
+      ]
     },
     {
       "competition_id": "UEFA_NATIONS_LEAGUE",
@@ -371,7 +509,11 @@
       "total_rounds": null,
       "model_group": "national_team_secondary",
       "historical_model_coverage": true,
-      "aliases": ["UEFA Nations League", "欧洲国家联赛", "欧国联"]
+      "aliases": [
+        "UEFA Nations League",
+        "欧洲国家联赛",
+        "欧国联"
+      ]
     },
     {
       "competition_id": "CONMEBOL_COPA_AMERICA",
@@ -383,7 +525,11 @@
       "total_rounds": null,
       "model_group": "national_team_major",
       "historical_model_coverage": true,
-      "aliases": ["Copa América", "Copa America", "美洲杯"]
+      "aliases": [
+        "Copa América",
+        "Copa America",
+        "美洲杯"
+      ]
     },
     {
       "competition_id": "CAF_AFRICA_CUP_OF_NATIONS",
@@ -395,7 +541,11 @@
       "total_rounds": null,
       "model_group": "national_team_major",
       "historical_model_coverage": true,
-      "aliases": ["African Cup of Nations", "Africa Cup of Nations", "非洲杯"]
+      "aliases": [
+        "African Cup of Nations",
+        "Africa Cup of Nations",
+        "非洲杯"
+      ]
     },
     {
       "competition_id": "CAF_AFRICA_CUP_OF_NATIONS_QUALIFICATION",
@@ -407,7 +557,11 @@
       "total_rounds": null,
       "model_group": "national_team_qualifier",
       "historical_model_coverage": true,
-      "aliases": ["African Cup of Nations qualification", "Africa Cup of Nations qualification", "非洲杯预选赛"]
+      "aliases": [
+        "African Cup of Nations qualification",
+        "Africa Cup of Nations qualification",
+        "非洲杯预选赛"
+      ]
     },
     {
       "competition_id": "AFC_ASIAN_CUP",
@@ -419,7 +573,11 @@
       "total_rounds": null,
       "model_group": "national_team_major",
       "historical_model_coverage": true,
-      "aliases": ["AFC Asian Cup", "Asian Cup", "亚洲杯"]
+      "aliases": [
+        "AFC Asian Cup",
+        "Asian Cup",
+        "亚洲杯"
+      ]
     },
     {
       "competition_id": "AFC_ASIAN_CUP_QUALIFICATION",
@@ -431,7 +589,11 @@
       "total_rounds": null,
       "model_group": "national_team_qualifier",
       "historical_model_coverage": true,
-      "aliases": ["AFC Asian Cup qualification", "Asian Cup qualification", "亚洲杯预选赛"]
+      "aliases": [
+        "AFC Asian Cup qualification",
+        "Asian Cup qualification",
+        "亚洲杯预选赛"
+      ]
     },
     {
       "competition_id": "CONCACAF_GOLD_CUP",
@@ -443,7 +605,11 @@
       "total_rounds": null,
       "model_group": "national_team_major",
       "historical_model_coverage": true,
-      "aliases": ["CONCACAF Gold Cup", "Gold Cup", "中北美金杯"]
+      "aliases": [
+        "CONCACAF Gold Cup",
+        "Gold Cup",
+        "中北美金杯"
+      ]
     },
     {
       "competition_id": "CONCACAF_NATIONS_LEAGUE",
@@ -455,7 +621,10 @@
       "total_rounds": null,
       "model_group": "national_team_secondary",
       "historical_model_coverage": true,
-      "aliases": ["CONCACAF Nations League", "中北美国联"]
+      "aliases": [
+        "CONCACAF Nations League",
+        "中北美国联"
+      ]
     },
     {
       "competition_id": "INTERNATIONAL_FRIENDLY",
@@ -467,7 +636,60 @@
       "total_rounds": null,
       "model_group": "national_team_friendly",
       "historical_model_coverage": true,
-      "aliases": ["Friendly", "International Friendly", "国际友谊赛", "友谊赛"]
+      "aliases": [
+        "Friendly",
+        "International Friendly",
+        "国际友谊赛",
+        "友谊赛"
+      ]
+    },
+    {
+      "competition_id": "CONMEBOL_LIBERTADORES",
+      "display_name": "南美解放者杯",
+      "country": "South America",
+      "competition_type": "continental_cup",
+      "tier": null,
+      "season_format": "calendar_year",
+      "total_rounds": null,
+      "model_group": "club_knockout_cup",
+      "historical_model_coverage": false,
+      "aliases": [
+        "CONMEBOL Libertadores",
+        "Copa Libertadores",
+        "解放者杯",
+        "南美解放者杯"
+      ]
+    },
+    {
+      "competition_id": "FRA_LIGUE_2",
+      "display_name": "法国足球乙级联赛",
+      "country": "France",
+      "competition_type": "league",
+      "tier": 2,
+      "season_format": "cross_year",
+      "total_rounds": 34,
+      "model_group": "european_lower_league",
+      "historical_model_coverage": false,
+      "aliases": [
+        "F2",
+        "Ligue 2",
+        "法乙"
+      ]
+    },
+    {
+      "competition_id": "NOR_ELITESERIEN",
+      "display_name": "挪威超级联赛",
+      "country": "Norway",
+      "competition_type": "league",
+      "tier": 1,
+      "season_format": "calendar_year",
+      "total_rounds": null,
+      "model_group": "unsupported_club_league",
+      "historical_model_coverage": false,
+      "aliases": [
+        "Eliteserien",
+        "挪超"
+      ]
     }
   ]
 }

@@ -396,6 +396,15 @@ export async function GET() {
   const scheduledTasks = tasks.filter((task: TaskRegistryItem) => task.status === "scheduled").length;
   const nextTask = tasks.find((task: TaskRegistryItem) => task.status === "scheduled") || null;
   const totalPlanCount = planSummaries.reduce((sum, item) => sum + item.real_plan_count, 0);
+  const pipelineTasks = tasks
+    .map((task: TaskRegistryItem) => ({
+      key: String(task.key || ""),
+      run_at: task.run_at || null,
+      status: task.status || null,
+      time_group: task.time_group || null,
+      purpose: task.purpose || null,
+    }))
+    .sort((a: { run_at: string | null }, b: { run_at: string | null }) => String(a.run_at || "").localeCompare(String(b.run_at || "")));
 
   return NextResponse.json({
     active_sales_day: activeSalesWindow.sales_day,
@@ -407,6 +416,7 @@ export async function GET() {
       scheduled_tasks: scheduledTasks,
       next_task_key: nextTask?.key || null,
       next_run_at: nextTask?.run_at || null,
+      tasks: pipelineTasks,
     },
     betting_plans: {
       count: totalPlanCount,

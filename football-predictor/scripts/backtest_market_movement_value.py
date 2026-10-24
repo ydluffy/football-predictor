@@ -20,6 +20,13 @@ if str(SRC) not in sys.path:
 
 from research_inner_outer_market_patterns import normalize_team
 from world_cup.sporttery_markets import build_sporttery_line_movement_features
+from data.competition_registry import load_team_alias_registry, normalize_alias
+
+
+def canonical_team_key(value: object) -> str:
+    raw = str(value or "").strip()
+    canonical = load_team_alias_registry().resolve(raw) or raw
+    return normalize_alias(canonical)
 
 
 def parse_score(score: object) -> tuple[int, int] | None:
@@ -102,8 +109,8 @@ def build_external_movement(history: pd.DataFrame) -> pd.DataFrame:
     frame = history.copy().fillna("")
     frame["date"] = pd.to_datetime(frame["date"], errors="coerce").dt.date.astype(str)
     frame["captured_at_sort"] = pd.to_datetime(frame["captured_at"], errors="coerce", utc=True)
-    frame["home_key"] = frame["home_team"].map(normalize_team)
-    frame["away_key"] = frame["away_team"].map(normalize_team)
+    frame["home_key"] = frame["home_team"].map(canonical_team_key)
+    frame["away_key"] = frame["away_team"].map(canonical_team_key)
     rows: list[dict[str, Any]] = []
     for key, group in frame.sort_values("captured_at_sort").groupby(["date", "home_key", "away_key"], dropna=False):
         first = group.iloc[0]

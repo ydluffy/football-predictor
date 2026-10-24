@@ -48,3 +48,7 @@ node_modules/
 /投注方案/
 /.supabase_home/
 /supabase/.temp/
+
+# Authorized sync runs write here when launched from the repository root with a
+# relative --state-dir; that operational evidence stays local like the others.
+/artifacts/

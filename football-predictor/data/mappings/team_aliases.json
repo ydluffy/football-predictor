@@ -1,52 +1,1151 @@
 {
   "schema_version": 1,
   "teams": [
-    {"canonical": "Manchester United", "aliases": ["Man United", "Man Utd", "曼联"]},
-    {"canonical": "Manchester City", "aliases": ["Man City", "曼城"]},
-    {"canonical": "Arsenal", "aliases": ["阿森纳"]},
-    {"canonical": "Liverpool", "aliases": ["利物浦"]},
-    {"canonical": "Chelsea", "aliases": ["切尔西"]},
-    {"canonical": "Tottenham Hotspur", "aliases": ["Tottenham", "Spurs", "热刺"]},
-    {"canonical": "Real Madrid", "aliases": ["Real Madrid CF", "皇家马德里", "皇马"]},
-    {"canonical": "Barcelona", "aliases": ["FC Barcelona", "巴塞罗那", "巴萨"]},
-    {"canonical": "Racing Santander", "aliases": ["Racing de Santander", "Real Racing Club de Santander", "桑坦德", "桑坦德竞技"]},
-    {"canonical": "Villarreal", "aliases": ["Villarreal CF", "比利亚雷", "比利亚雷亚尔"]},
-    {"canonical": "ADO Den Haag", "aliases": ["海牙"]},
-    {"canonical": "FC Groningen", "aliases": ["格罗宁根"]},
-    {"canonical": "FC Twente", "aliases": ["FC Twente '65", "特温特"]},
-    {"canonical": "PEC Zwolle", "aliases": ["兹沃勒"]},
-    {"canonical": "Feyenoord", "aliases": ["Feyenoord Rotterdam", "费耶诺德"]},
-    {"canonical": "Go Ahead Eagles", "aliases": ["前进之鹰"]},
-    {"canonical": "Nacional", "aliases": ["CD Nacional", "葡国民"]},
-    {"canonical": "Estoril", "aliases": ["GD Estoril Praia", "埃斯托里"]},
-    {"canonical": "Ajax", "aliases": ["AFC Ajax", "阿贾克斯"]},
-    {"canonical": "Heerenveen", "aliases": ["SC Heerenveen", "海伦芬"]},
-    {"canonical": "Espanyol", "aliases": ["RCD Espanyol de Barcelona", "西班牙人"]},
-    {"canonical": "Levante", "aliases": ["Levante UD", "莱万特"]},
-    {"canonical": "Arouca", "aliases": ["FC Arouca", "阿罗卡"]},
-    {"canonical": "Moreirense", "aliases": ["Moreirense FC", "摩雷伦斯"]},
-    {"canonical": "Famalicao", "aliases": ["FC Famalicão", "法马利康"]},
-    {"canonical": "Maritimo", "aliases": ["CS Marítimo", "马里迪莫"]},
-    {"canonical": "Braga", "aliases": ["Sporting Clube de Braga", "布拉加"]},
-    {"canonical": "Gil Vicente", "aliases": ["Gil Vicente FC", "吉维森特"]},
-    {"canonical": "Bayern Munich", "aliases": ["Bayern München", "FC Bayern", "拜仁慕尼黑", "拜仁"]},
-    {"canonical": "Paris Saint-Germain", "aliases": ["PSG", "Paris SG", "巴黎圣日耳曼", "巴黎"]},
-    {"canonical": "Kashima Antlers", "aliases": ["鹿岛鹿角"]},
-    {"canonical": "Yokohama F. Marinos", "aliases": ["Yokohama Marinos", "横滨水手"]},
-    {"canonical": "Urawa Red Diamonds", "aliases": ["Urawa Reds", "浦和红钻"]},
-    {"canonical": "Sanfrecce Hiroshima", "aliases": ["广岛三箭"]},
-    {"canonical": "Vissel Kobe", "aliases": ["神户胜利船"]},
-    {"canonical": "Cardiff City", "aliases": ["Cardiff City FC", "加的夫城"]},
-    {"canonical": "Wrexham", "aliases": ["Wrexham AFC", "雷克斯", "雷克瑟姆"]},
-    {"canonical": "Deportivo La Coruna", "aliases": ["Deportivo La Coruña", "Deportivo", "拉科", "拉科鲁尼亚"]},
-    {"canonical": "Elche", "aliases": ["Elche CF", "埃尔切"]},
-    {"canonical": "Casa Pia", "aliases": ["Casa Pia AC", "卡萨皮亚"]},
-    {"canonical": "Benfica", "aliases": ["SL Benfica", "本菲卡"]},
-    {"canonical": "IF Gnistan", "aliases": ["Gnistan", "赫尔火花"]},
-    {"canonical": "Ilves Tampere", "aliases": ["Ilves", "Tampereen Ilves", "坦山猫"]},
-    {"canonical": "BK Hacken", "aliases": ["BK Häcken", "Hacken", "赫根"]},
-    {"canonical": "Halmstads BK", "aliases": ["Halmstad", "哈尔姆斯"]},
-    {"canonical": "Internacional", "aliases": ["SC Internacional", "Internacional RS", "巴西国际"]},
-    {"canonical": "Remo", "aliases": ["Clube do Remo", "里莫"]}
+    {
+      "canonical": "Manchester United",
+      "aliases": [
+        "Man United",
+        "Man Utd",
+        "曼联",
+        "Manchester United FC"
+      ]
+    },
+    {
+      "canonical": "Manchester City",
+      "aliases": [
+        "Man City",
+        "曼城",
+        "Manchester City FC"
+      ]
+    },
+    {
+      "canonical": "Arsenal",
+      "aliases": [
+        "阿森纳",
+        "Arsenal FC"
+      ]
+    },
+    {
+      "canonical": "Liverpool",
+      "aliases": [
+        "利物浦",
+        "Liverpool FC"
+      ]
+    },
+    {
+      "canonical": "Chelsea",
+      "aliases": [
+        "切尔西",
+        "Chelsea FC"
+      ]
+    },
+    {
+      "canonical": "Tottenham Hotspur",
+      "aliases": [
+        "Tottenham",
+        "Spurs",
+        "热刺",
+        "Tottenham Hotspur FC"
+      ]
+    },
+    {
+      "canonical": "Real Madrid",
+      "aliases": [
+        "Real Madrid CF",
+        "皇家马德里",
+        "皇马"
+      ]
+    },
+    {
+      "canonical": "Barcelona",
+      "aliases": [
+        "FC Barcelona",
+        "巴塞罗那",
+        "巴萨"
+      ]
+    },
+    {
+      "canonical": "Racing Santander",
+      "aliases": [
+        "Racing de Santander",
+        "Real Racing Club de Santander",
+        "桑坦德",
+        "桑坦德竞技",
+        "Santander"
+      ]
+    },
+    {
+      "canonical": "Villarreal",
+      "aliases": [
+        "Villarreal CF",
+        "比利亚雷",
+        "比利亚雷亚尔"
+      ]
+    },
+    {
+      "canonical": "ADO Den Haag",
+      "aliases": [
+        "海牙",
+        "Den Haag"
+      ]
+    },
+    {
+      "canonical": "FC Groningen",
+      "aliases": [
+        "格罗宁根",
+        "Groningen"
+      ]
+    },
+    {
+      "canonical": "FC Twente",
+      "aliases": [
+        "FC Twente '65",
+        "特温特",
+        "Twente"
+      ]
+    },
+    {
+      "canonical": "PEC Zwolle",
+      "aliases": [
+        "兹沃勒",
+        "Zwolle"
+      ]
+    },
+    {
+      "canonical": "Feyenoord",
+      "aliases": [
+        "Feyenoord Rotterdam",
+        "费耶诺德"
+      ]
+    },
+    {
+      "canonical": "Go Ahead Eagles",
+      "aliases": [
+        "前进之鹰"
+      ]
+    },
+    {
+      "canonical": "Nacional",
+      "aliases": [
+        "CD Nacional",
+        "葡国民"
+      ]
+    },
+    {
+      "canonical": "Estoril",
+      "aliases": [
+        "GD Estoril Praia",
+        "埃斯托里"
+      ]
+    },
+    {
+      "canonical": "Ajax",
+      "aliases": [
+        "AFC Ajax",
+        "阿贾克斯"
+      ]
+    },
+    {
+      "canonical": "Heerenveen",
+      "aliases": [
+        "SC Heerenveen",
+        "海伦芬"
+      ]
+    },
+    {
+      "canonical": "Espanyol",
+      "aliases": [
+        "RCD Espanyol de Barcelona",
+        "西班牙人",
+        "Espanol"
+      ]
+    },
+    {
+      "canonical": "Levante",
+      "aliases": [
+        "Levante UD",
+        "莱万特"
+      ]
+    },
+    {
+      "canonical": "Arouca",
+      "aliases": [
+        "FC Arouca",
+        "阿罗卡"
+      ]
+    },
+    {
+      "canonical": "Moreirense",
+      "aliases": [
+        "Moreirense FC",
+        "摩雷伦斯"
+      ]
+    },
+    {
+      "canonical": "Famalicao",
+      "aliases": [
+        "FC Famalicão",
+        "法马利康",
+        "Famalicão",
+        "FC Famalicao"
+      ]
+    },
+    {
+      "canonical": "Maritimo",
+      "aliases": [
+        "CS Marítimo",
+        "马里迪莫"
+      ]
+    },
+    {
+      "canonical": "Braga",
+      "aliases": [
+        "Sporting Clube de Braga",
+        "布拉加",
+        "Sp Braga"
+      ]
+    },
+    {
+      "canonical": "Gil Vicente",
+      "aliases": [
+        "Gil Vicente FC",
+        "吉维森特"
+      ]
+    },
+    {
+      "canonical": "Bayern Munich",
+      "aliases": [
+        "Bayern München",
+        "FC Bayern",
+        "拜仁慕尼黑",
+        "拜仁",
+        "FC Bayern München"
+      ]
+    },
+    {
+      "canonical": "Paris Saint-Germain",
+      "aliases": [
+        "PSG",
+        "Paris SG",
+        "巴黎圣日耳曼",
+        "巴黎",
+        "Paris Saint-Germain FC",
+        "巴黎圣曼"
+      ]
+    },
+    {
+      "canonical": "Kashima Antlers",
+      "aliases": [
+        "鹿岛鹿角"
+      ]
+    },
+    {
+      "canonical": "Yokohama F. Marinos",
+      "aliases": [
+        "Yokohama Marinos",
+        "横滨水手"
+      ]
+    },
+    {
+      "canonical": "Urawa Red Diamonds",
+      "aliases": [
+        "Urawa Reds",
+        "浦和红钻"
+      ]
+    },
+    {
+      "canonical": "Sanfrecce Hiroshima",
+      "aliases": [
+        "广岛三箭"
+      ]
+    },
+    {
+      "canonical": "Vissel Kobe",
+      "aliases": [
+        "神户胜利船"
+      ]
+    },
+    {
+      "canonical": "Cardiff City",
+      "aliases": [
+        "Cardiff City FC",
+        "加的夫城"
+      ]
+    },
+    {
+      "canonical": "Wrexham",
+      "aliases": [
+        "Wrexham AFC",
+        "雷克斯",
+        "雷克瑟姆"
+      ]
+    },
+    {
+      "canonical": "Deportivo La Coruna",
+      "aliases": [
+        "Deportivo La Coruña",
+        "Deportivo",
+        "拉科",
+        "拉科鲁尼亚"
+      ]
+    },
+    {
+      "canonical": "Elche",
+      "aliases": [
+        "Elche CF",
+        "埃尔切"
+      ]
+    },
+    {
+      "canonical": "Casa Pia",
+      "aliases": [
+        "Casa Pia AC",
+        "卡萨皮亚"
+      ]
+    },
+    {
+      "canonical": "Benfica",
+      "aliases": [
+        "SL Benfica",
+        "本菲卡",
+        "Sport Lisboa e Benfica"
+      ]
+    },
+    {
+      "canonical": "IF Gnistan",
+      "aliases": [
+        "Gnistan",
+        "赫尔火花"
+      ]
+    },
+    {
+      "canonical": "Ilves Tampere",
+      "aliases": [
+        "Ilves",
+        "Tampereen Ilves",
+        "坦山猫"
+      ]
+    },
+    {
+      "canonical": "BK Hacken",
+      "aliases": [
+        "BK Häcken",
+        "Hacken",
+        "赫根"
+      ]
+    },
+    {
+      "canonical": "Halmstads BK",
+      "aliases": [
+        "Halmstad",
+        "哈尔姆斯"
+      ]
+    },
+    {
+      "canonical": "Internacional",
+      "aliases": [
+        "SC Internacional",
+        "Internacional RS",
+        "巴西国际"
+      ]
+    },
+    {
+      "canonical": "Remo",
+      "aliases": [
+        "Clube do Remo",
+        "里莫"
+      ]
+    },
+    {
+      "canonical": "Birmingham City",
+      "aliases": [
+        "Birmingham",
+        "伯明翰"
+      ]
+    },
+    {
+      "canonical": "Wolverhampton Wanderers",
+      "aliases": [
+        "Wolves",
+        "Wolverhampton",
+        "伍尔弗"
+      ]
+    },
+    {
+      "canonical": "AZ Alkmaar",
+      "aliases": [
+        "Alkmaar",
+        "阿尔克马",
+        "AZ"
+      ]
+    },
+    {
+      "canonical": "Everton",
+      "aliases": [
+        "Everton FC",
+        "埃弗顿"
+      ]
+    },
+    {
+      "canonical": "Frosinone",
+      "aliases": [
+        "Frosinone Calcio",
+        "弗洛西诺"
+      ]
+    },
+    {
+      "canonical": "Venezia",
+      "aliases": [
+        "Venezia FC",
+        "威尼斯"
+      ]
+    },
+    {
+      "canonical": "Parma",
+      "aliases": [
+        "Parma Calcio 1913",
+        "帕尔马"
+      ]
+    },
+    {
+      "canonical": "Monza",
+      "aliases": [
+        "AC Monza",
+        "蒙扎"
+      ]
+    },
+    {
+      "canonical": "Troyes",
+      "aliases": [
+        "ESTAC Troyes",
+        "特鲁瓦",
+        "ES Troyes AC"
+      ]
+    },
+    {
+      "canonical": "Strasbourg",
+      "aliases": [
+        "RC Strasbourg",
+        "RC Strasbourg Alsace",
+        "斯特拉斯"
+      ]
+    },
+    {
+      "canonical": "Hamburger SV",
+      "aliases": [
+        "Hamburg",
+        "HSV",
+        "汉堡"
+      ]
+    },
+    {
+      "canonical": "Mainz 05",
+      "aliases": [
+        "Mainz",
+        "1. FSV Mainz 05",
+        "美因茨"
+      ]
+    },
+    {
+      "canonical": "Valencia",
+      "aliases": [
+        "Valencia CF",
+        "巴伦西亚"
+      ]
+    },
+    {
+      "canonical": "Santa Clara",
+      "aliases": [
+        "CD Santa Clara",
+        "圣克拉拉"
+      ]
+    },
+    {
+      "canonical": "Rio Ave",
+      "aliases": [
+        "Rio Ave FC",
+        "里奥阿维"
+      ]
+    },
+    {
+      "canonical": "Atalanta",
+      "aliases": [
+        "Atalanta BC",
+        "亚特兰大"
+      ]
+    },
+    {
+      "canonical": "Malmo FF",
+      "aliases": [
+        "Malmo",
+        "Malmö FF",
+        "马尔默"
+      ]
+    },
+    {
+      "canonical": "Kalmar FF",
+      "aliases": [
+        "Kalmar",
+        "卡尔马"
+      ]
+    },
+    {
+      "canonical": "KFUM Oslo",
+      "aliases": [
+        "KFUM",
+        "奥斯KFUM"
+      ]
+    },
+    {
+      "canonical": "Valerenga",
+      "aliases": [
+        "Vålerenga",
+        "瓦勒伦加"
+      ]
+    },
+    {
+      "canonical": "Torino",
+      "aliases": [
+        "Torino FC",
+        "都灵"
+      ]
+    },
+    {
+      "canonical": "Udinese",
+      "aliases": [
+        "Udinese Calcio",
+        "乌迪内斯"
+      ]
+    },
+    {
+      "canonical": "Dijon",
+      "aliases": [
+        "Dijon FCO",
+        "第戎"
+      ]
+    },
+    {
+      "canonical": "Metz",
+      "aliases": [
+        "FC Metz",
+        "梅斯"
+      ]
+    },
+    {
+      "canonical": "Coventry City",
+      "aliases": [
+        "Coventry",
+        "考文垂",
+        "Coventry City FC"
+      ]
+    },
+    {
+      "canonical": "Newcastle United",
+      "aliases": [
+        "Newcastle",
+        "纽卡斯尔",
+        "Newcastle United FC"
+      ]
+    },
+    {
+      "canonical": "Sevilla",
+      "aliases": [
+        "Sevilla FC",
+        "塞维利亚"
+      ]
+    },
+    {
+      "canonical": "Coritiba",
+      "aliases": [
+        "Coritiba FC",
+        "科里蒂巴"
+      ]
+    },
+    {
+      "canonical": "Botafogo",
+      "aliases": [
+        "Botafogo FR",
+        "博塔弗戈"
+      ]
+    },
+    {
+      "canonical": "Alverca",
+      "aliases": [
+        "FC Alverca",
+        "阿尔维卡"
+      ]
+    },
+    {
+      "canonical": "Excelsior",
+      "aliases": [
+        "SBV精英",
+        "SBV Excelsior"
+      ]
+    },
+    {
+      "canonical": "Bournemouth",
+      "aliases": [
+        "AFC Bournemouth",
+        "伯恩茅斯"
+      ]
+    },
+    {
+      "canonical": "Aston Villa",
+      "aliases": [
+        "Aston Villa FC",
+        "维拉"
+      ]
+    },
+    {
+      "canonical": "Brentford",
+      "aliases": [
+        "Brentford FC",
+        "布伦特"
+      ]
+    },
+    {
+      "canonical": "Brighton",
+      "aliases": [
+        "Brighton & Hove Albion FC"
+      ]
+    },
+    {
+      "canonical": "Crystal Palace",
+      "aliases": [
+        "Crystal Palace FC"
+      ]
+    },
+    {
+      "canonical": "Fulham",
+      "aliases": [
+        "Fulham FC",
+        "富勒姆"
+      ]
+    },
+    {
+      "canonical": "Hull",
+      "aliases": [
+        "Hull City AFC",
+        "赫尔城"
+      ]
+    },
+    {
+      "canonical": "Ipswich",
+      "aliases": [
+        "Ipswich Town FC",
+        "伊普斯"
+      ]
+    },
+    {
+      "canonical": "Leeds",
+      "aliases": [
+        "Leeds United FC",
+        "利兹联"
+      ]
+    },
+    {
+      "canonical": "Nott'm Forest",
+      "aliases": [
+        "Nottingham Forest FC",
+        "诺丁汉"
+      ]
+    },
+    {
+      "canonical": "Sunderland",
+      "aliases": [
+        "Sunderland AFC",
+        "桑德兰"
+      ]
+    },
+    {
+      "canonical": "FC Koln",
+      "aliases": [
+        "1. FC Köln"
+      ]
+    },
+    {
+      "canonical": "Union Berlin",
+      "aliases": [
+        "1. FC Union Berlin",
+        "柏林联合"
+      ]
+    },
+    {
+      "canonical": "Leverkusen",
+      "aliases": [
+        "Bayer 04 Leverkusen",
+        "勒沃库森"
+      ]
+    },
+    {
+      "canonical": "Dortmund",
+      "aliases": [
+        "Borussia Dortmund",
+        "多特蒙德"
+      ]
+    },
+    {
+      "canonical": "M'gladbach",
+      "aliases": [
+        "Borussia Mönchengladbach",
+        "门兴"
+      ]
+    },
+    {
+      "canonical": "Ein Frankfurt",
+      "aliases": [
+        "Eintracht Frankfurt"
+      ]
+    },
+    {
+      "canonical": "Augsburg",
+      "aliases": [
+        "FC Augsburg",
+        "奥格斯堡"
+      ]
+    },
+    {
+      "canonical": "Schalke 04",
+      "aliases": [
+        "FC Schalke 04",
+        "沙尔克04"
+      ]
+    },
+    {
+      "canonical": "Freiburg",
+      "aliases": [
+        "SC Freiburg",
+        "弗赖堡"
+      ]
+    },
+    {
+      "canonical": "Paderborn",
+      "aliases": [
+        "SC Paderborn 07",
+        "帕德博恩"
+      ]
+    },
+    {
+      "canonical": "Elversberg",
+      "aliases": [
+        "SV 07 Elversberg",
+        "埃沃斯堡"
+      ]
+    },
+    {
+      "canonical": "Werder Bremen",
+      "aliases": [
+        "SV Werder Bremen",
+        "不来梅"
+      ]
+    },
+    {
+      "canonical": "Hoffenheim",
+      "aliases": [
+        "TSG 1899 Hoffenheim",
+        "霍芬海姆"
+      ]
+    },
+    {
+      "canonical": "Stuttgart",
+      "aliases": [
+        "VfB Stuttgart",
+        "斯图加特"
+      ]
+    },
+    {
+      "canonical": "Utrecht",
+      "aliases": [
+        "FC Utrecht"
+      ]
+    },
+    {
+      "canonical": "For Sittard",
+      "aliases": [
+        "Fortuna Sittard"
+      ]
+    },
+    {
+      "canonical": "Nijmegen",
+      "aliases": [
+        "NEC"
+      ]
+    },
+    {
+      "canonical": "PSV Eindhoven",
+      "aliases": [
+        "PSV"
+      ]
+    },
+    {
+      "canonical": "Cambuur",
+      "aliases": [
+        "SC Cambuur-Leeuwarden"
+      ]
+    },
+    {
+      "canonical": "Telstar",
+      "aliases": [
+        "Telstar 1963",
+        "特尔斯达"
+      ]
+    },
+    {
+      "canonical": "Willem II",
+      "aliases": [
+        "Willem II Tilburg"
+      ]
+    },
+    {
+      "canonical": "Auxerre",
+      "aliases": [
+        "AJ Auxerre"
+      ]
+    },
+    {
+      "canonical": "Monaco",
+      "aliases": [
+        "AS Monaco FC",
+        "摩纳哥"
+      ]
+    },
+    {
+      "canonical": "Angers",
+      "aliases": [
+        "Angers SCO",
+        "昂热"
+      ]
+    },
+    {
+      "canonical": "Lorient",
+      "aliases": [
+        "FC Lorient",
+        "洛里昂"
+      ]
+    },
+    {
+      "canonical": "Le Havre",
+      "aliases": [
+        "Le Havre AC"
+      ]
+    },
+    {
+      "canonical": "Le Mans",
+      "aliases": [
+        "Le Mans FC"
+      ]
+    },
+    {
+      "canonical": "Lille",
+      "aliases": [
+        "里尔",
+        "Lille OSC"
+      ]
+    },
+    {
+      "canonical": "Nice",
+      "aliases": [
+        "OGC Nice",
+        "尼斯"
+      ]
+    },
+    {
+      "canonical": "Lyon",
+      "aliases": [
+        "Olympique Lyonnais",
+        "里昂"
+      ]
+    },
+    {
+      "canonical": "Marseille",
+      "aliases": [
+        "Olympique de Marseille",
+        "马赛"
+      ]
+    },
+    {
+      "canonical": "Lens",
+      "aliases": [
+        "朗斯",
+        "Racing Club de Lens"
+      ]
+    },
+    {
+      "canonical": "Brest",
+      "aliases": [
+        "Stade Brestois 29"
+      ]
+    },
+    {
+      "canonical": "Rennes",
+      "aliases": [
+        "Stade Rennais FC 1901"
+      ]
+    },
+    {
+      "canonical": "Toulouse",
+      "aliases": [
+        "Toulouse FC"
+      ]
+    },
+    {
+      "canonical": "Ath Bilbao",
+      "aliases": [
+        "Athletic Club",
+        "毕尔巴鄂"
+      ]
+    },
+    {
+      "canonical": "Osasuna",
+      "aliases": [
+        "CA Osasuna",
+        "奥萨苏纳"
+      ]
+    },
+    {
+      "canonical": "Ath Madrid",
+      "aliases": [
+        "Club Atlético de Madrid",
+        "马竞"
+      ]
+    },
+    {
+      "canonical": "Alaves",
+      "aliases": [
+        "Deportivo Alavés",
+        "阿拉维斯"
+      ]
+    },
+    {
+      "canonical": "Getafe",
+      "aliases": [
+        "Getafe CF",
+        "赫塔费"
+      ]
+    },
+    {
+      "canonical": "Malaga",
+      "aliases": [
+        "Málaga CF",
+        "马拉加"
+      ]
+    },
+    {
+      "canonical": "Celta",
+      "aliases": [
+        "RC Celta de Vigo",
+        "塞尔塔"
+      ]
+    },
+    {
+      "canonical": "La Coruna",
+      "aliases": [
+        "RC Deportivo La Coruña"
+      ]
+    },
+    {
+      "canonical": "Vallecano",
+      "aliases": [
+        "Rayo Vallecano de Madrid",
+        "巴列卡诺"
+      ]
+    },
+    {
+      "canonical": "Betis",
+      "aliases": [
+        "Real Betis",
+        "Real Betis Balompié",
+        "贝蒂斯"
+      ]
+    },
+    {
+      "canonical": "Sociedad",
+      "aliases": [
+        "Real Sociedad de Fútbol",
+        "皇家社会"
+      ]
+    },
+    {
+      "canonical": "Academico Viseu",
+      "aliases": [
+        "Académico de Viseu FC"
+      ]
+    },
+    {
+      "canonical": "Estrela",
+      "aliases": [
+        "CF Estrela da Amadora"
+      ]
+    },
+    {
+      "canonical": "Porto",
+      "aliases": [
+        "FC Porto"
+      ]
+    },
+    {
+      "canonical": "Sp Lisbon",
+      "aliases": [
+        "里斯本",
+        "Sporting CP",
+        "Sporting Clube de Portugal"
+      ]
+    },
+    {
+      "canonical": "Guimaraes",
+      "aliases": [
+        "Vitória SC"
+      ]
+    },
+    {
+      "canonical": "Milan",
+      "aliases": [
+        "AC Milan",
+        "AC米兰"
+      ]
+    },
+    {
+      "canonical": "Fiorentina",
+      "aliases": [
+        "ACF Fiorentina",
+        "佛罗伦萨"
+      ]
+    },
+    {
+      "canonical": "Roma",
+      "aliases": [
+        "AS Roma",
+        "罗马"
+      ]
+    },
+    {
+      "canonical": "Bologna",
+      "aliases": [
+        "Bologna FC 1909",
+        "博洛尼亚"
+      ]
+    },
+    {
+      "canonical": "Cagliari",
+      "aliases": [
+        "Cagliari Calcio",
+        "卡利亚里"
+      ]
+    },
+    {
+      "canonical": "Como",
+      "aliases": [
+        "Como 1907",
+        "科莫"
+      ]
+    },
+    {
+      "canonical": "Inter",
+      "aliases": [
+        "FC Internazionale Milano",
+        "国际米兰"
+      ]
+    },
+    {
+      "canonical": "Genoa",
+      "aliases": [
+        "Genoa CFC",
+        "热那亚"
+      ]
+    },
+    {
+      "canonical": "Juventus",
+      "aliases": [
+        "Juventus FC",
+        "尤文图斯"
+      ]
+    },
+    {
+      "canonical": "Lazio",
+      "aliases": [
+        "SS Lazio",
+        "拉齐奥"
+      ]
+    },
+    {
+      "canonical": "Napoli",
+      "aliases": [
+        "SSC Napoli",
+        "那不勒斯"
+      ]
+    },
+    {
+      "canonical": "Lecce",
+      "aliases": [
+        "US Lecce",
+        "莱切"
+      ]
+    },
+    {
+      "canonical": "Sassuolo",
+      "aliases": [
+        "US Sassuolo Calcio"
+      ]
+    },
+    {
+      "canonical": "RB Leipzig",
+      "aliases": [
+        "莱红牛"
+      ]
+    },
+    {
+      "canonical": "Degerfors",
+      "aliases": [
+        "代格福什"
+      ]
+    },
+    {
+      "canonical": "Rodez",
+      "aliases": [
+        "罗德兹"
+      ]
+    },
+    {
+      "canonical": "Montpellier",
+      "aliases": [
+        "蒙彼利埃"
+      ]
+    },
+    {
+      "canonical": "Corinthians",
+      "aliases": [
+        "科林蒂安"
+      ]
+    },
+    {
+      "canonical": "Vitoria",
+      "aliases": [
+        "维多利亚"
+      ]
+    },
+    {
+      "canonical": "Galatasaray",
+      "aliases": ["加拉塔萨", "加拉塔萨雷", "Galatasaray SK"]
+    },
+    {
+      "canonical": "Viking",
+      "aliases": ["维京", "Viking FK"]
+    },
+    {
+      "canonical": "Lask Linz",
+      "aliases": ["LASK林茨"]
+    },
+    {
+      "canonical": "Club Brugge KV",
+      "aliases": ["布鲁日"]
+    },
+    {
+      "canonical": "Palmeiras",
+      "aliases": ["帕梅拉斯", "帕尔梅拉斯", "SE Palmeiras"]
+    },
+    {
+      "canonical": "Fluminense",
+      "aliases": ["弗鲁米嫩", "弗鲁米嫩塞", "Fluminense FC"]
+    }
   ]
 }

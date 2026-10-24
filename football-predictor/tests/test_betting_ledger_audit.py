@@ -3,6 +3,16 @@ from __future__ import annotations
 from strategy.betting_ledger_audit import audit_betting_ledger, render_audit_markdown
 
 
+def test_new_batch_budget_is_checked_without_daily_cap(tmp_path):
+    ledger=tmp_path/'batch.csv'
+    ledger.write_text('date,plan_id,plan_type,selections,stake,result\n'
+        '2026-10-18,SPORTTERY_BATCH_20261018_aaaaaaaaaaaa_SAFE,稳健,A,100,待赛\n'
+        '2026-10-18,SPORTTERY_BATCH_20261018_bbbbbbbbbbbb_SAFE,稳健,B,100,待赛\n',encoding='utf-8')
+    assert audit_betting_ledger(ledger)['issue_counts']['errors']==0
+    ledger.write_text(ledger.read_text(encoding='utf-8').replace('B,100','B,101'),encoding='utf-8')
+    assert 'invalid_formal_batch_policy' in {x['code'] for x in audit_betting_ledger(ledger)['issues']}
+
+
 def test_audit_detects_superseded_pending_and_keeps_financial_scopes_separate(tmp_path):
     ledger = tmp_path / "ledger.csv"
     ledger.write_text(

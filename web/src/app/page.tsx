@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
-import type { DashboardContextResponse, Fixture, FixtureMarketIntel, Prediction } from "@/lib/api";
+import type { DashboardContextResponse, Fixture, FixtureMarketIntel, Prediction, ReviewSummary } from "@/lib/api";
 import {
   EmptyState,
   MetricCard,
@@ -12,7 +12,7 @@ import {
   StatusBadge,
   SurfaceCard,
 } from "@/components/Workbench";
-import { getDashboardContext, getFixtures, getMarketIntel, getPredictionsByDate } from "@/lib/api";
+import { getDashboardContext, getFixtures, getMarketIntel, getPredictionsByDate, getReviews } from "@/lib/api";
 import { getShanghaiToday } from "@/lib/time";
 import { competitionNameZh, formatLocalTimeFromUtc, teamNameZh } from "@/lib/zh";
 
@@ -45,6 +45,7 @@ export default function Home() {
   const [fixtures, setFixtures] = useState<Fixture[]>([]);
   const [predictions, setPredictions] = useState<Prediction[]>([]);
   const [marketIntel, setMarketIntel] = useState<Map<number, FixtureMarketIntel>>(new Map());
+  const [reviewSummaries, setReviewSummaries] = useState<ReviewSummary[]>([]);
   const [error, setError] = useState<string | null>(null);
   const fallbackToday = useMemo(() => getShanghaiToday(), []);
   const activeSalesDay = dashboard?.active_sales_day || fallbackToday;
@@ -57,9 +58,10 @@ export default function Home() {
       setError(null);
       try {
         const dashboardResp = await getDashboardContext();
-        const [fixturesResp, predsResp] = await Promise.all([
+        const [fixturesResp, predsResp, reviewsResp] = await Promise.all([
           getFixtures(dashboardResp.active_sales_day),
           getPredictionsByDate(dashboardResp.active_sales_day).catch(() => ({ count: 0, predictions: [] })),
+          getReviews().catch(() => ({ summary_count: 0, plan_count: 0, summaries: [], plans: [] })),
         ]);
         const intelResp = await getMarketIntel(fixturesResp.fixtures).catch(() => ({ count: 0, items: [] }));
 
@@ -68,6 +70,7 @@ export default function Home() {
         setFixtures(fixturesResp.fixtures);
         setPredictions(predsResp.predictions);
         setMarketIntel(new Map(intelResp.items.map((item) => [item.fixture_id, item])));
+        setReviewSummaries(reviewsResp.summaries || []);
       } catch (e) {
         if (!mounted) return;
         setError(e instanceof Error ? e.message : String(e));
@@ -98,6 +101,60 @@ export default function Home() {
   }, [systemStatus]);
 
   const predictedFixtureIds = useMemo(() => new Set(predictions.map((p) => p.fixture_id)), [predictions]);
+
+  // 战绩条：从复盘摘要直接计算（连红/累计命中率/累计ROI/上周命中）
+  const heroStats = useMemo(() => {
+    if (reviewSummaries.length === 0) return null;
+    const totalHits = reviewSummaries.reduce((sum, item) => sum + item.hits, 0);
+    const totalPlans = reviewSummaries.reduce((sum, item) => sum + item.plans, 0);
+    const totalStake = reviewSummaries.reduce((sum, item) => sum + item.stake, 0);
+    const totalProfit = reviewSummaries.reduce((sum, item) => sum + item.net_profit, 0);
+    let streak = 0;
+    for (const item of reviewSummaries) {
+      if (item.net_profit > 0) streak += 1;
+      else break;
+    }
+    const anchor = new Date(`${reviewSummaries[0].sales_day}T12:00:00+08:00`).getTime();
+    const cutoff = anchor - 7 * 24 * 3600 * 1000;
+    const last7Hits = reviewSummaries
+      .filter((item) => new Date(`${item.sales_day}T12:00:00+08:00`).getTime() >= cutoff)
+      .reduce((sum, item) => sum + item.hits, 0);
+    return {
+      days: reviewSummaries.length,
+      totalHits,
+      totalPlans,
+      hitRate: totalPlans > 0 ? totalHits / totalPlans : null,
+      roi: totalStake > 0 ? totalProfit / totalStake : null,
+      streak,
+      last7Hits,
+    };
+  }, [reviewSummaries]);
+
+  // 今日流水线：注册表任务 + 隐含固定阶段
+  const pipelineSteps = useMemo(() => {
+    if (!dashboard) return [];
+    const steps: Array<{ label: string; time: string | null; status: "completed" | "scheduled" | "pending" | "failed" | "info" }> = [
+      { label: "10:00 预扫描", time: null, status: "info" },
+      { label: "11:05 开售确认", time: null, status: dashboard.registry.total_tasks > 0 ? "completed" : "info" },
+    ];
+    for (const task of dashboard.registry.tasks || []) {
+      const timeText = task.run_at ? task.run_at.slice(11, 16) : "--:--";
+      const status =
+        task.status === "completed"
+          ? "completed"
+          : task.status === "scheduled"
+            ? "scheduled"
+            : task.status === "failed"
+              ? "failed"
+              : "pending";
+      steps.push({
+        label: `${timeText} ${task.purpose || task.key || "任务"}`,
+        time: task.run_at,
+        status,
+      });
+    }
+    return steps;
+  }, [dashboard]);
   const predictionMap = useMemo(() => new Map(predictions.map((prediction) => [prediction.fixture_id, prediction])), [predictions]);
   const readyPredictions = useMemo(
     () => predictions.filter((p) => p.confidence > 0).sort((a, b) => b.confidence - a.confidence),
@@ -252,6 +309,91 @@ export default function Home() {
         <section className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           页面加载时发生错误：{error}
         </section>
+      ) : null}
+
+      <SurfaceCard
+        title="今日流水线"
+        description="把总控编排搬到台前：预扫描、开售确认、各时间组终版任务的完成状态和下一步时间。这是自动化后台第一次直接可见。"
+        action={
+          <SecondaryLink href="/controller">进入总控</SecondaryLink>
+        }
+      >
+        {pipelineSteps.length <= 2 ? (
+          <EmptyState text="当前销售日还没有编排任务。通常表示 11:05 开售确认尚未运行，或该销售日没有在售比赛。" />
+        ) : (
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              {pipelineSteps.map((step, index) => (
+                <div key={`${step.label}-${index}`} className="flex items-center gap-2">
+                  <div
+                    className={
+                      step.status === "completed"
+                        ? "rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-medium text-emerald-800"
+                        : step.status === "scheduled"
+                          ? "rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white"
+                          : step.status === "failed"
+                            ? "rounded-full bg-red-100 px-3 py-1.5 text-xs font-medium text-red-800"
+                            : step.status === "pending"
+                              ? "rounded-full bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-800"
+                              : "rounded-full bg-zinc-100 px-3 py-1.5 text-xs text-zinc-500"
+                    }
+                  >
+                    {step.label}
+                  </div>
+                  {index < pipelineSteps.length - 1 ? <span className="text-zinc-300">→</span> : null}
+                </div>
+              ))}
+            </div>
+            <div className="mt-3 text-xs text-zinc-500">
+              {dashboard?.registry.next_run_at
+                ? `下一步：${formatDateTime(dashboard.registry.next_run_at)} ${dashboard.registry.next_task_key || ""}`
+                : "当日任务已全部完成，下一次唤醒为次日 10:00 预扫描。"}
+              {dashboard?.registry.updated_at ? ` · 注册表更新 ${formatDateTime(dashboard.registry.updated_at)}` : ""}
+            </div>
+          </div>
+        )}
+      </SurfaceCard>
+
+      {heroStats ? (
+        <SurfaceCard
+          title="战绩速览"
+          description="由已入库复盘数据直接计算，用行业通用的战绩语言快速判断模型状态。"
+          action={<SecondaryLink href="/review">查看复盘</SecondaryLink>}
+        >
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+              <div className="text-xs text-zinc-500">当前连红</div>
+              <div className={`mt-1 text-2xl font-semibold ${heroStats.streak > 0 ? "text-red-600" : "text-zinc-950"}`}>
+                {heroStats.streak > 0 ? `${heroStats.streak} 天` : "0 天"}
+              </div>
+              <div className="mt-1 text-xs text-zinc-500">连续盈利销售日</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+              <div className="text-xs text-zinc-500">累计命中</div>
+              <div className="mt-1 text-2xl font-semibold text-zinc-950">{heroStats.totalHits} 场</div>
+              <div className="mt-1 text-xs text-zinc-500">
+                命中率 {heroStats.hitRate != null ? `${Math.round(heroStats.hitRate * 100)}%` : "—"}
+              </div>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+              <div className="text-xs text-zinc-500">累计盈利率</div>
+              <div className={`mt-1 text-2xl font-semibold ${heroStats.roi != null && heroStats.roi > 0 ? "text-emerald-700" : "text-red-700"}`}>
+                {heroStats.roi != null ? `${(heroStats.roi * 100).toFixed(1)}%` : "—"}
+              </div>
+              <div className="mt-1 text-xs text-zinc-500">真实方案口径</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+              <div className="text-xs text-zinc-500">上周命中</div>
+              <div className="mt-1 text-2xl font-semibold text-zinc-950">{heroStats.last7Hits} 场</div>
+              <div className="mt-1 text-xs text-zinc-500">近 7 个自然日</div>
+            </div>
+            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+              <div className="text-xs text-zinc-500">已复盘</div>
+              <div className="mt-1 text-2xl font-semibold text-zinc-950">{heroStats.days} 天</div>
+              <div className="mt-1 text-xs text-zinc-500">入库销售日数量</div>
+            </div>
+          </div>
+        </SurfaceCard>
       ) : null}
 
       <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">

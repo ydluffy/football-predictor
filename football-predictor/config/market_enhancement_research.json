@@ -1,0 +1,12 @@
+{
+  "research_only": true,
+  "production_probability_change_allowed": false,
+  "min_labelled_unique_events": 300,
+  "historical_proxy_summary": "artifacts/eval/market_enhancement_20261019_v1/summary.json",
+  "real_dataset_directory": "artifacts/eval/real_market_enhancement_20261019_rebuilt",
+  "real_validation_summary": "artifacts/eval/real_market_enhancement_20261019_rebuilt_validation/summary.json",
+  "real_training_status": "blocked_insufficient_labelled_unique_events",
+  "retained_research_candidate": "market_levels_plus_totals",
+  "movement_and_dispersion_production_enabled": false,
+  "report": "docs/market_enhancement_research_20261019.md"
+}

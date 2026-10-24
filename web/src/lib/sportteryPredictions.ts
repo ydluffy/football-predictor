@@ -93,6 +93,7 @@ async function findLatestSportteryMatchAnalysisFile(salesDay: string) {
 }
 
 function num(text: string) {
+  if (!String(text ?? "").trim()) return null;
   const n = Number(String(text || "").trim());
   return Number.isFinite(n) ? n : null;
 }
@@ -110,6 +111,7 @@ function parseKickoffLocal(text: string | null) {
 }
 
 export type SportteryPredictionSeed = {
+  source_captured_at: string;
   fixture_id: number;
   match_number: string;
   competition: string;
@@ -125,6 +127,9 @@ export type SportteryPredictionSeed = {
 export async function loadSportteryPredictionSeedsBySalesDay(salesDay: string): Promise<SportteryPredictionSeed[]> {
   const filePath = await findLatestSportteryMatchAnalysisFile(salesDay);
   if (!filePath) return [];
+  const stamp = path.basename(filePath).match(/_(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})/);
+  if (!stamp) return [];
+  const sourceCapturedAt = `${stamp[1]}T${stamp[2]}:${stamp[3]}:00+08:00`;
   const rawText = await readFile(/* turbopackIgnore: true */ filePath, "utf8");
   const rows = parseCsv(rawText) as unknown as SportteryMatchAnalysisRow[];
 
@@ -138,6 +143,8 @@ export async function loadSportteryPredictionSeedsBySalesDay(salesDay: string): 
     const drawProb = num((r as any).draw_probability) ?? null;
     const favLabel = String((r as any).favorite_label || "").trim();
     if (favoriteProb == null || drawProb == null) continue;
+    if (!favLabel.includes("主") && !favLabel.includes("客")) continue;
+    if (favoriteProb < 0 || drawProb < 0 || favoriteProb + drawProb > 1.000001) continue;
 
     const remaining = clamp01(1 - favoriteProb - drawProb);
     const pHome = favLabel.includes("主") ? favoriteProb : remaining;
@@ -154,6 +161,7 @@ export async function loadSportteryPredictionSeedsBySalesDay(salesDay: string): 
     if ((r as any).market_signal_note) factors.push(`市场备注：${String((r as any).market_signal_note)}`);
 
     out.push({
+      source_captured_at: sourceCapturedAt,
       fixture_id: buildSportteryFixtureId(salesDay, matchNumber),
       match_number: matchNumber,
       competition: String((r as any).competition || ""),

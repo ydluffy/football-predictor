@@ -2,6 +2,8 @@ import { access, readdir, readFile } from "node:fs/promises";
 import path from "node:path";
 import { NextResponse } from "next/server";
 import { requireSupabaseAdmin } from "@/lib/requireSupabaseAdmin";
+import { verifiedArtifactUpsert } from "@/lib/verifiedArtifactUpsert";
+import { localArtifactsEnabled } from "@/lib/localArtifacts";
 
 type JsonRecord = Record<string, unknown>;
 
@@ -155,21 +157,22 @@ export async function POST(req: Request) {
   try {
     const { sb, response } = requireSupabaseAdmin(req);
     if (!sb) return response;
+    if (!localArtifactsEnabled()) return NextResponse.json({ error: "local_artifacts_disabled" }, { status: 503 });
 
-    const body = (await req.json().catch(() => ({}))) as { sales_days?: string[] };
+    const body = (await req.json().catch(() => ({}))) as { sales_days?: string[]; review_export?: JsonRecord };
     const wantedSalesDays = new Set((body.sales_days || []).map((v) => String(v)));
     const dataDir = await resolveDataDir();
     if (!dataDir) {
       return NextResponse.json({ error: "未找到本地 artifacts/data 目录" }, { status: 400 });
     }
 
-    const fileNames = await readdir(/* turbopackIgnore: true */ dataDir);
-    const reviewFiles = fileNames.filter((name) => /^sporttery_daily_review_\d{4}-\d{2}-\d{2}_\d{4}\.json$/.test(name));
+    const fileNames = (await readdir(/* turbopackIgnore: true */ dataDir)).sort();
+    const reviewFiles = fileNames.filter((name) => /^sporttery_(?:daily|full)_review_\d{4}-\d{2}-\d{2}(?:_\d{4})?\.json$/.test(name));
     const analysisFiles = fileNames.filter((name) => /^sporttery_.+\.json$/.test(name));
 
     const skipped: Array<{ file: string; reason: string }> = [];
-    const reviewSummaries: any[] = [];
-    const reviewPlans: any[] = [];
+    let reviewSummaries: any[] = [];
+    let reviewPlans: any[] = [];
     for (const fileName of reviewFiles) {
       const fullPath = path.join(/* turbopackIgnore: true */ dataDir, fileName);
       const payload = await safeReadJsonFile(fullPath);
@@ -183,6 +186,21 @@ export async function POST(req: Request) {
       reviewPlans.push(...parseReviewPlans(payload));
     }
 
+    // The local ledger is authoritative even when the human-readable review has no JSON sibling.
+    if (body.review_export) {
+      const exported = body.review_export;
+      const day = asString(exported.sales_day);
+      if (!wantedSalesDays.has(day) || exported.source !== "frozen_local_ledgers" || !Array.isArray(exported.real_plans)) {
+        return NextResponse.json({ error: "invalid frozen review export" }, { status: 400 });
+      }
+      const previous = reviewSummaries.filter((row) => row.sales_day === day).at(-1)?.payload || {};
+      const merged = { ...previous, ...exported, reviewed_at: previous.reviewed_at || null };
+      reviewSummaries = reviewSummaries.filter((row) => row.sales_day !== day);
+      reviewPlans = reviewPlans.filter((row) => row.sales_day !== day);
+      reviewSummaries.push(parseReviewSummary(merged));
+      reviewPlans.push(...parseReviewPlans(merged));
+    }
+
     const analysisRuns: any[] = [];
     for (const fileName of analysisFiles) {
       const fullPath = path.join(/* turbopackIgnore: true */ dataDir, fileName);
@@ -191,8 +209,11 @@ export async function POST(req: Request) {
         skipped.push({ file: fileName, reason: "invalid_json" });
         continue;
       }
-      const salesDay = asString(payload.sales_day);
-      const analysisAt = asString(payload.analysis_at);
+      // Some frozen early/final reports carry identity only in their filename.
+      // Keep that provenance explicit; never substitute the current sync time.
+      const stamp = fileName.match(/^sporttery_(?:early|final)_analysis_(\d{4}-\d{2}-\d{2})_(\d{2})(\d{2})_/);
+      const salesDay = asString(payload.sales_day) || stamp?.[1] || "";
+      const analysisAt = asString(payload.analysis_at) || (stamp ? `${stamp[1]}T${stamp[2]}:${stamp[3]}:00+08:00` : "");
       if (!salesDay || !analysisAt) continue;
       if (wantedSalesDays.size > 0 && !wantedSalesDays.has(salesDay)) continue;
       if (!payload.stage && !payload.real_plans && !payload.real_plan && !payload.fixed_odds_shadow) continue;
@@ -215,28 +236,27 @@ export async function POST(req: Request) {
         fixed_shadow_recorded: String(fixedOdds?.status || "").toLowerCase() === "recorded",
         fixed_shadow_plan_id: asString(fixedOdds?.plan_id) || null,
         report: asString(payload.report) || null,
-        payload,
+        payload: { ...payload, source_file: fileName, analysis_time_source: payload.analysis_at ? "payload" : "filename_minute" },
       });
     }
 
     if (reviewSummaries.length > 0) {
-      const { error } = await sb.from("sporttery_review_summaries").upsert(reviewSummaries, { onConflict: "sales_day" });
+      const { error } = await verifiedArtifactUpsert(sb, "sporttery_review_summaries", reviewSummaries, "sales_day");
       if (error) return NextResponse.json({ error: error.message, table: "sporttery_review_summaries" }, { status: 500 });
     }
 
     if (reviewPlans.length > 0) {
-      const { error } = await sb.from("sporttery_review_plans").upsert(reviewPlans, { onConflict: "sales_day,plan_id,category" });
+      const { error } = await verifiedArtifactUpsert(sb, "sporttery_review_plans", reviewPlans, "sales_day,plan_id,category");
       if (error) return NextResponse.json({ error: error.message, table: "sporttery_review_plans" }, { status: 500 });
     }
 
     if (analysisRuns.length > 0) {
-      const { error } = await sb
-        .from("sporttery_analysis_runs")
-        .upsert(analysisRuns, { onConflict: "sales_day,stage,analysis_at" });
+      const { error } = await verifiedArtifactUpsert(sb, "sporttery_analysis_runs", analysisRuns, "sales_day,stage,analysis_at");
       if (error) return NextResponse.json({ error: error.message, table: "sporttery_analysis_runs" }, { status: 500 });
     }
 
     return NextResponse.json({
+      verified: true,
       persisted_review_summaries: reviewSummaries.length,
       persisted_review_plans: reviewPlans.length,
       persisted_analysis_runs: analysisRuns.length,

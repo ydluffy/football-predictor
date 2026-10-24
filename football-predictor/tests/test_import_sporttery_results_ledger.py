@@ -25,6 +25,22 @@ def test_review_ledger_settles_waiting_row_but_preserves_superseded_row(monkeypa
     assert archived["payout"] == ""
 
 
+def test_review_ledger_settles_pending_review_status(monkeypatch, tmp_path):
+    ledger_path = tmp_path / "ledger.csv"
+    ledger_path.write_text(
+        "date,time_window,plan_id,plan_type,selections,stake,estimated_odds,actual_odds,result,payout,net_profit,roi,review_note\n"
+        "2026-09-13,21:16,PENDING_REVIEW,稳健,A胜,2,2.0,,待复盘,,,,\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(importer, "evaluate_selection", lambda selection, results: (False, "未中"))
+
+    reviewed = importer.review_ledger(ledger_path, pd.DataFrame())
+
+    assert reviewed.iloc[0]["result"] == "未中"
+    assert reviewed.iloc[0]["payout"] == "0.00"
+    assert reviewed.iloc[0]["net_profit"] == "-2.00"
+
+
 def test_evaluate_selection_supports_numbered_compact_ledger_format():
     results = pd.DataFrame(
         [
@@ -75,6 +91,13 @@ def test_evaluate_selection_supports_inline_home_handicap_ledger_format():
 
 def test_parse_odds_value_supports_display_formula():
     assert importer.parse_odds_value("1.15*1.60=1.8400") == 1.84
+
+
+def test_exact_away_team_beats_fuzzy_home_alias_and_postfix_handicap_parses():
+    result = pd.Series({"home_team": "赫尔火花", "all_home_team": "赫尔辛基火花", "away_team": "赫尔辛基", "all_away_team": "赫尔辛基"})
+    assert importer.team_matches("赫尔辛基", result) == "away"
+    parsed = importer.parse_selection("004 萨普斯堡vs奥斯KFUM(-1) 让球胜平负:让胜@2.35")
+    assert (parsed["market"], parsed["handicap"], parsed["away_team"]) == ("rqspf", "-1", "奥斯KFUM")
 
 
 def test_sales_window_result_end_includes_next_calendar_day():

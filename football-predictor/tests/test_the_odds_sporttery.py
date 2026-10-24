@@ -11,7 +11,7 @@ from data.the_odds_sporttery import (
     capture_sporttery_the_odds_snapshot,
     route_sport_keys,
 )
-from world_cup.the_odds_api_adapter import odds_payload_to_frame
+from world_cup.the_odds_api_adapter import TheOddsApiClient, odds_payload_to_frame
 
 
 def _fixture() -> dict[str, object]:
@@ -149,3 +149,39 @@ def test_invalid_early_confirmation_cannot_fetch_external_odds(tmp_path):
         )
 
     assert list(tmp_path.iterdir()) == []
+
+
+def _capture_with_stubbed_probe(tmp_path):
+    return capture_sporttery_the_odds_snapshot(
+        scan={"sales_day": "2026-08-17", "fixtures": [_fixture()]},
+        snapshot_root=tmp_path,
+        api_key="test-key",  # pragma: allowlist secret
+        snapshot_type="confirm",
+    )
+
+
+def test_quota_probe_failure_blocks_every_paid_request(tmp_path, monkeypatch):
+    def failing_probe(self, endpoint, params=None):
+        raise RuntimeError("sports endpoint unavailable")
+
+    monkeypatch.setattr(TheOddsApiClient, "get", failing_probe)
+    audit = _capture_with_stubbed_probe(tmp_path)
+
+    assert audit["status"] == "quota_insufficient"
+    assert audit["quota_preflight"]["blocked"] is True
+    assert audit["quota_preflight"]["reason"] == "quota_probe_failed:RuntimeError"
+    assert audit["requests"] == []
+
+
+def test_unreadable_quota_headers_block_instead_of_spending_credits(tmp_path, monkeypatch):
+    def headerless_probe(self, endpoint, params=None):
+        self.last_headers = {}
+        return []
+
+    monkeypatch.setattr(TheOddsApiClient, "get", headerless_probe)
+    audit = _capture_with_stubbed_probe(tmp_path)
+
+    assert audit["status"] == "quota_insufficient"
+    assert audit["quota_preflight"]["blocked"] is True
+    assert audit["quota_preflight"]["reason"] == "remaining_quota_unverified"
+    assert audit["requests"] == []

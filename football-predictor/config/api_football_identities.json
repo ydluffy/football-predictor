@@ -1,0 +1,114 @@
+{
+  "schema_version": 1,
+  "provider": "api_football",
+  "scope": "Reviewed source-scoped identities; not player demographics or cross-provider merges",
+  "evidence": "artifacts/data/entity_identity_check_20261022.json",
+  "reviewed_on": "2026-10-22",
+  "teams": [
+    {
+      "id": "895",
+      "canonical": "Como",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "33",
+      "canonical": "Manchester United",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "79",
+      "canonical": "Lille",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "645",
+      "canonical": "Galatasaray",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "539",
+      "canonical": "Levante",
+      "official_directory": "https://www.laliga.com/en-US/laliga-easports/clubs"
+    },
+    {
+      "id": "531",
+      "canonical": "Ath Bilbao",
+      "official_directory": "https://www.laliga.com/en-US/laliga-easports/clubs"
+    },
+    {
+      "id": "541",
+      "canonical": "Real Madrid",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "173",
+      "canonical": "RB Leipzig",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "66",
+      "canonical": "Aston Villa",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "759",
+      "canonical": "Viking",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "543",
+      "canonical": "Betis",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "209",
+      "canonical": "Feyenoord",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "157",
+      "canonical": "Bayern Munich",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "42",
+      "canonical": "Arsenal",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "228",
+      "canonical": "Sp Lisbon",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "1026",
+      "canonical": "Lask Linz",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "569",
+      "canonical": "Club Brugge KV",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "116",
+      "canonical": "Lens",
+      "official_directory": "https://www.uefa.com/uefachampionsleague/clubs/"
+    },
+    {
+      "id": "121",
+      "canonical": "Palmeiras",
+      "official_directory": "https://gol.conmebol.com/libertadores/es/teams"
+    },
+    {
+      "id": "124",
+      "canonical": "Fluminense",
+      "official_directory": "https://gol.conmebol.com/libertadores/es/teams"
+    }
+  ],
+  "competitions": {
+    "2": "UEFA_CHAMPIONS_LEAGUE",
+    "13": "CONMEBOL_LIBERTADORES",
+    "140": "ESP_LA_LIGA"
+  }
+}

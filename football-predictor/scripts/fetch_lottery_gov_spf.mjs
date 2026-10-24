@@ -87,6 +87,9 @@ async function main() {
   const launchOptions = {
     headless: !args.headful,
   };
+  if (process.env.SPORTTERY_DIRECT_CONNECTION === "1") {
+    launchOptions.args = ["--no-proxy-server"];
+  }
   if (args.channel) {
     launchOptions.channel = args.channel;
   }
@@ -165,7 +168,18 @@ async function main() {
     fs.mkdirSync(path.dirname(args.linksOutput), { recursive: true });
     fs.writeFileSync(args.linksOutput, JSON.stringify(links, null, 2), "utf8");
   }
-  await browser.close();
+  let closeTimedOut = false;
+  let closeTimer;
+  await Promise.race([
+    browser.close(),
+    new Promise((resolve) => {
+      closeTimer = setTimeout(() => {
+        closeTimedOut = true;
+        resolve();
+      }, 5000);
+    }),
+  ]);
+  clearTimeout(closeTimer);
   console.log(
     JSON.stringify(
       {
@@ -177,11 +191,13 @@ async function main() {
         screenshot: args.screenshot || "",
         linksOutput: args.linksOutput || "",
         channel: args.channel,
+        browserCloseTimedOut: closeTimedOut,
       },
       null,
       2
     )
   );
+  if (closeTimedOut) process.exit(0);
 }
 
 main().catch((error) => {

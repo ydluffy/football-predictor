@@ -3,8 +3,8 @@
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
-import type { Fixture, FixtureMarketIntel, Prediction } from "@/lib/api";
-import { getFixtures, getMarketIntel, getPredictionsByDate, ingestFootballData } from "@/lib/api";
+import type { AnalysisRunLedgerItem, Fixture, FixtureLedgerRegistry, FixtureLedgerRow, FixtureMarketIntel, OddsChangeInfo, Prediction } from "@/lib/api";
+import { getFixtureLedger, getFixtures, getMarketIntel, getPredictionsByDate, ingestFootballData } from "@/lib/api";
 import { MatchDetailCard } from "@/components/MatchDetailCard";
 import {
   ActionButton,
@@ -117,6 +117,42 @@ function getOutcomeLabel(pred?: Prediction | null) {
   return `${top.label} ${Math.round(top.value * 100)}%`;
 }
 
+// 官方 SPF 赔率变化展示：主赔率初→终 + 变标记，平客变化作次行
+function renderOddsChange(change?: OddsChangeInfo | null) {
+  if (!change) return <span className="text-sm text-zinc-400">—</span>;
+  const [beforeHome, beforeDraw, beforeAway] = change.before;
+  const [afterHome, afterDraw, afterAway] = change.after;
+  if (beforeHome == null && afterHome == null) return <span className="text-sm text-zinc-400">—</span>;
+  const fmt = (value: number | null) => (value == null ? "-" : value.toFixed(2));
+  const homeDrop = beforeHome != null && afterHome != null && afterHome < beforeHome;
+  const homeRise = beforeHome != null && afterHome != null && afterHome > beforeHome;
+  return (
+    <div>
+      <div className="flex items-center gap-1.5 text-sm">
+        <span
+          className={
+            change.changed
+              ? homeDrop
+                ? "font-semibold text-red-600"
+                : homeRise
+                  ? "font-semibold text-emerald-700"
+                  : "font-semibold text-zinc-800"
+              : "text-zinc-700"
+          }
+        >
+          {fmt(beforeHome)}→{fmt(afterHome)}
+        </span>
+        {change.changed ? (
+          <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">变</span>
+        ) : null}
+      </div>
+      <div className="mt-1 text-xs text-zinc-500">
+        平 {fmt(beforeDraw)}→{fmt(afterDraw)} · 客 {fmt(beforeAway)}→{fmt(afterAway)}
+      </div>
+    </div>
+  );
+}
+
 function FixturesPageContent() {
   const router = useRouter();
   const pathname = usePathname();
@@ -128,6 +164,9 @@ function FixturesPageContent() {
   const [rows, setRows] = useState<Fixture[]>([]);
   const [marketIntel, setMarketIntel] = useState<Map<number, FixtureMarketIntel>>(new Map());
   const [predictions, setPredictions] = useState<Map<number, Prediction>>(new Map());
+  const [analysisRuns, setAnalysisRuns] = useState<AnalysisRunLedgerItem[]>([]);
+  const [registry, setRegistry] = useState<FixtureLedgerRegistry | null>(null);
+  const [fixtureLedgerMap, setFixtureLedgerMap] = useState<Map<number, FixtureLedgerRow>>(new Map());
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [tableCollapsed, setTableCollapsed] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -171,6 +210,16 @@ function FixturesPageContent() {
       setRows(r.fixtures);
       setLastUpdatedAt(new Date().toISOString());
       try {
+        const ledger = await getFixtureLedger(date);
+        setAnalysisRuns(ledger.runs || []);
+        setFixtureLedgerMap(new Map((ledger.fixtures || []).map((item) => [item.fixture_id, item])));
+        setRegistry(ledger.registry || null);
+      } catch {
+        setAnalysisRuns([]);
+        setFixtureLedgerMap(new Map());
+        setRegistry(null);
+      }
+      try {
         const preds = await getPredictionsByDate(date);
         setPredictions(new Map((preds.predictions || []).map((item) => [item.fixture_id, item])));
       } catch (e) {
@@ -187,6 +236,9 @@ function FixturesPageContent() {
       setError(e instanceof Error ? e.message : String(e));
       setMarketIntel(new Map());
       setPredictions(new Map());
+      setAnalysisRuns([]);
+      setFixtureLedgerMap(new Map());
+      setRegistry(null);
     } finally {
       setBusy(false);
     }
@@ -268,6 +320,18 @@ function FixturesPageContent() {
     });
   }, [activeLeagues, activeSignals, marketIntel, rows]);
   const filteredCount = filteredRows.length;
+  const multiRunFixtureCount = useMemo(
+    () => [...fixtureLedgerMap.values()].filter((item) => item.analysis_run_count >= 2).length,
+    [fixtureLedgerMap],
+  );
+  const totalPlanCount = useMemo(
+    () => analysisRuns.reduce((sum, item) => sum + item.real_plan_count, 0),
+    [analysisRuns],
+  );
+  const totalStake = useMemo(
+    () => analysisRuns.reduce((sum, item) => sum + item.total_stake, 0),
+    [analysisRuns],
+  );
   const signalCounts = useMemo(() => {
     const counts = new Map<SignalFilterId, number>();
     for (const filter of SIGNAL_FILTERS) counts.set(filter.id, 0);
@@ -289,6 +353,21 @@ function FixturesPageContent() {
     () => (selectedFixture ? predictions.get(selectedFixture.fixture_id) || null : null),
     [predictions, selectedFixture],
   );
+  const selectedFixtureSummary = useMemo(
+    () => (selectedFixture ? fixtureLedgerMap.get(selectedFixture.fixture_id) || null : null),
+    [fixtureLedgerMap, selectedFixture],
+  );
+  const selectedFixtureRuns = useMemo(() => {
+    if (!selectedFixtureSummary || selectedFixtureSummary.analysis_run_count === 0) return [];
+    const matchNumber =
+      selectedFixtureSummary.sporttery_match_number ||
+      getSportteryCode(
+        selectedFixtureSummary.fixture_id,
+        date,
+        rows.findIndex((item) => item.fixture_id === selectedFixtureSummary.fixture_id),
+      ).slice(-3);
+    return analysisRuns.filter((run) => run.scope_match_numbers.includes(matchNumber));
+  }, [analysisRuns, date, rows, selectedFixtureSummary]);
 
   return (
     <div className="grid gap-6">
@@ -309,9 +388,9 @@ function FixturesPageContent() {
         <MetricCard label="已预测" value={busy ? "…" : String(predictedCount)} hint="已经生成胜平负结论的场次" />
         <MetricCard label="联赛覆盖" value={busy ? "…" : String(competitionsCount)} hint="当日涉及的赛事数量" />
         <MetricCard
-          label="比分回传"
-          value={busy ? "…" : `${matchesWithScore}/${rows.length}`}
-          hint={activeSignals.length > 0 ? "当前已按盘口信号筛选" : `进行中 ${liveCount} 场`}
+          label="多次分析"
+          value={busy ? "…" : String(multiRunFixtureCount)}
+          hint={activeSignals.length > 0 ? "当前已按盘口信号筛选" : `进行中 ${liveCount} 场，比分回传 ${matchesWithScore}/${rows.length}`}
         />
       </section>
 
@@ -387,6 +466,18 @@ function FixturesPageContent() {
                 </>
               }
             />
+            {selectedFixtureRuns.length > 0 ? (
+              <div className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+                <div className="text-sm font-semibold text-zinc-950">这场比赛今天的分析轨迹</div>
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {selectedFixtureRuns.map((run) => (
+                    <StatusBadge key={`${run.stage}-${run.analysis_at || "na"}-${run.task_key || "task"}`} tone={run.stage === "final" ? "success" : "warning"}>
+                      {run.stage_label} · {formatUpdatedAt(run.analysis_at)}
+                    </StatusBadge>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         ) : null}
         <div className="grid gap-4">
@@ -566,15 +657,23 @@ function FixturesPageContent() {
                 <span className="font-semibold text-orange-600">{getWeekLabel(date)} {date}</span>
                 <span className="ml-2 text-zinc-700">共 {filteredRows.length} 场比赛</span>
                 <span className="ml-2 text-zinc-400">(比赛编号日期：{date.replace(/-/g, "").slice(2)})</span>
+                {registry && registry.total_tasks > 0 ? (
+                  <span className="ml-3 text-zinc-500">
+                    当日任务 {registry.completed_tasks}/{registry.total_tasks}
+                    {registry.next_task.run_at ? ` · 下一步 ${formatUpdatedAt(registry.next_task.run_at)} ${registry.next_task.key || ""}` : " · 当日任务已全部完成"}
+                  </span>
+                ) : null}
               </div>
               <div className="overflow-x-auto rounded-2xl border border-zinc-200">
-                <table className="min-w-[1220px] w-full border-separate border-spacing-0 text-sm">
+                <table className="min-w-[1480px] w-full border-separate border-spacing-0 text-sm">
                   <thead className="sticky top-0 z-10 bg-slate-100 text-xs text-slate-600">
                     <tr>
                       <th className="border-b border-zinc-200 px-3 py-3 text-left">赛事编号</th>
                       <th className="border-b border-zinc-200 px-3 py-3 text-left">联赛</th>
                       <th className="border-b border-zinc-200 px-3 py-3 text-left">主队 vs 客队</th>
                       <th className="border-b border-zinc-200 px-3 py-3 text-left">比赛开始时间</th>
+                      <th className="border-b border-zinc-200 px-3 py-3 text-left">官方赔率(初→终)</th>
+                      <th className="border-b border-zinc-200 px-3 py-3 text-left">分析批次</th>
                       <th className="border-b border-zinc-200 px-3 py-3 text-left">比赛资讯</th>
                       <th className="border-b border-zinc-200 px-3 py-3 text-left">预测状态</th>
                       <th className="border-b border-zinc-200 px-3 py-3 text-left">胜平负预测</th>
@@ -587,6 +686,7 @@ function FixturesPageContent() {
                     {filteredRows.map((row, index) => {
                       const leagueName = row.competition_name_zh || competitionNameZh(row.competition_code, row.competition_name);
                       const prediction = predictions.get(row.fixture_id);
+                      const fixtureSummary = fixtureLedgerMap.get(row.fixture_id);
                       const intel = marketIntel.get(row.fixture_id);
                       const hasPrediction = Boolean(prediction);
                       const handicapValue =
@@ -613,6 +713,24 @@ function FixturesPageContent() {
                           </td>
                           <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
                             {row.kickoff_time_zh || formatLocalTimeFromUtc(row.utc_date, "Asia/Shanghai")}
+                          </td>
+                          <td className="border-b border-zinc-200 px-3 py-3 align-top">{renderOddsChange(fixtureSummary?.odds_change)}</td>
+                          <td className="border-b border-zinc-200 px-3 py-3 align-top">
+                            {fixtureSummary?.analysis_run_count ? (
+                              <div className="max-w-[180px]">
+                                <div className="font-semibold text-zinc-900">{fixtureSummary.analysis_run_count} 次</div>
+                                <div className="mt-1 flex flex-wrap gap-1">
+                                  {fixtureSummary.analysis_stage_labels.map((label) => (
+                                    <StatusBadge key={`${row.fixture_id}-${label}`} tone={/终版/.test(label) ? "success" : "warning"}>
+                                      {label}
+                                    </StatusBadge>
+                                  ))}
+                                </div>
+                                <div className="mt-1 text-xs text-zinc-500">最新 {formatUpdatedAt(fixtureSummary.latest_analysis_at)}</div>
+                              </div>
+                            ) : (
+                              <span className="text-sm text-zinc-500">今日未入分析批次</span>
+                            )}
                           </td>
                           <td className="border-b border-zinc-200 px-3 py-3 align-top">
                             <div className="flex flex-wrap items-center gap-2">
@@ -667,6 +785,85 @@ function FixturesPageContent() {
         {rows.length > 0 && matchesWithScore === 0 ? (
           <div className="mt-4 text-xs text-zinc-500">提示：当前日期比赛多数尚未结束，比分为空属于正常情况。</div>
         ) : null}
+      </SurfaceCard>
+
+      <SurfaceCard
+        title="当日预测流水"
+        description="按销售日展示今天实际跑过的分析批次。先看有没有跑过、几点跑的、出了几套方案，再决定进哪一场比赛做细看。"
+      >
+        {analysisRuns.length === 0 ? (
+          <EmptyState text="当前销售日还没有分析批次记录。通常表示今天只同步了赛程，还没有把早盘/终版分析结果入库。" />
+        ) : (
+          <div className="grid gap-4">
+            <div className="grid gap-3 md:grid-cols-3">
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+                <div className="text-xs text-zinc-500">分析批次数</div>
+                <div className="mt-1 text-2xl font-semibold text-zinc-950">{analysisRuns.length}</div>
+                <div className="mt-1 text-xs text-zinc-500">同一天多次修正会连续展示在这里</div>
+              </div>
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+                <div className="text-xs text-zinc-500">产出方案数</div>
+                <div className="mt-1 text-2xl font-semibold text-zinc-950">{totalPlanCount}</div>
+                <div className="mt-1 text-xs text-zinc-500">统计各批次真实方案行数</div>
+              </div>
+              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
+                <div className="text-xs text-zinc-500">累计投注额</div>
+                <div className="mt-1 text-2xl font-semibold text-zinc-950">{totalStake.toFixed(2)}</div>
+                <div className="mt-1 text-xs text-zinc-500">用于快速看当天操盘强度</div>
+              </div>
+            </div>
+
+            <div className="overflow-x-auto rounded-2xl border border-zinc-200">
+              <table className="min-w-full border-separate border-spacing-0 text-sm">
+                <thead className="bg-zinc-50 text-xs text-zinc-500">
+                  <tr>
+                    <th className="border-b border-zinc-200 px-3 py-3 text-left">批次</th>
+                    <th className="border-b border-zinc-200 px-3 py-3 text-left">分析时间</th>
+                    <th className="border-b border-zinc-200 px-3 py-3 text-left">任务</th>
+                    <th className="border-b border-zinc-200 px-3 py-3 text-left">在售场次</th>
+                    <th className="border-b border-zinc-200 px-3 py-3 text-left">方案</th>
+                    <th className="border-b border-zinc-200 px-3 py-3 text-left">投注额</th>
+                    <th className="border-b border-zinc-200 px-3 py-3 text-left">固定赔率观察</th>
+                    <th className="border-b border-zinc-200 px-3 py-3 text-left">关联方案 ID</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {analysisRuns.map((run) => (
+                    <tr key={`${run.stage}-${run.analysis_at || "na"}`} className="bg-white">
+                      <td className="border-b border-zinc-200 px-3 py-3 align-top">
+                        <StatusBadge tone={run.stage === "final" ? "success" : "warning"}>{run.stage_label}</StatusBadge>
+                      </td>
+                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
+                        {formatUpdatedAt(run.analysis_at)}
+                      </td>
+                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
+                        <div>{run.task_key || "—"}</div>
+                        <div className="mt-1 text-xs text-zinc-400">{run.status || "无状态回写"}</div>
+                      </td>
+                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
+                        {run.official_on_sale_count ?? "—"}
+                      </td>
+                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
+                        {run.real_plan_count}
+                      </td>
+                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
+                        {run.total_stake.toFixed(2)}
+                      </td>
+                      <td className="border-b border-zinc-200 px-3 py-3 align-top">
+                        <StatusBadge tone={run.fixed_shadow_recorded ? "success" : "neutral"}>
+                          {run.fixed_shadow_recorded ? run.fixed_shadow_plan_id || "已记录" : "未记录"}
+                        </StatusBadge>
+                      </td>
+                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
+                        {run.plan_ids.length > 0 ? run.plan_ids.join("、") : "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
       </SurfaceCard>
     </div>
   );

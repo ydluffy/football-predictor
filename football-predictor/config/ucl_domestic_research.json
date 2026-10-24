@@ -1,0 +1,31 @@
+{
+  "research_only": true,
+  "prospective_enabled": true,
+  "production_probability_change_allowed": false,
+  "simulation_budget": 0,
+  "effective_from": "2026-10-21T07:10:57.587366+00:00",
+  "model_artifact": "artifacts/eval/ucl_domestic_phase5_20261021/model.json",
+  "provider_fixtures": "artifacts/data/ucl_phase5_20261021/CL_2026.json",
+  "provider_captured_at": "2026-10-24T03:54:37.420689+00:00",
+  "max_provider_age_hours": 24,
+  "candidates": [
+    "elo_only",
+    "elo_domestic_form"
+  ],
+  "historical_test_role": "developmental_previously_examined_season",
+  "no_historical_backfill": true,
+  "reviewed_aliases": {
+    "里尔": "521",
+    "加拉塔萨": "610",
+    "维京": "5720",
+    "里斯本": "498",
+    "LASK林茨": "2016",
+    "布鲁日": "851",
+    "朗斯": "546"
+  },
+  "alias_evidence": {
+    "official_scan": "artifacts/data/sporttery_sales_window_scan_2026-10-21_1107_confirm.json",
+    "provider_archive": "artifacts/data/ucl_phase5_20261021/CL_2026.json",
+    "method": "explicit bilingual identity review; validated provider ID, full pair and kickoff; no fuzzy match"
+  }
+}

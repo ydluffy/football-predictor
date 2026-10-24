@@ -4,7 +4,7 @@ import json
 
 import pandas as pd
 
-from data.unified_outer_market_history import build_unified_histories
+from data.unified_outer_market_history import build_unified_histories, persist_unified_histories
 
 
 def test_the_odds_snapshots_enter_unified_and_model_histories(tmp_path):
@@ -52,3 +52,42 @@ def test_the_odds_snapshots_enter_unified_and_model_histories(tmp_path):
     assert len(model) == 1
     assert bool(model.iloc[0]["complete_for_shadow_inference"])
     assert audit_result["the_odds_snapshots"] == 1
+
+
+def test_nowscore_snapshot_enters_outer_history_without_model_promotion(tmp_path):
+    root = tmp_path / "nowscore" / "sample"
+    root.mkdir(parents=True)
+    (root / "audit.json").write_text(json.dumps({"source": "nowscore", "status": "partial"}), encoding="utf-8")
+    pd.DataFrame([{"record_id": "n1", "source": "nowscore", "match_id": "2026-09-20|010",
+                   "captured_at": "2026-09-20T12:00:00Z", "bookmaker_id": "1", "home_handicap": -0.5,
+                   "eligible_for_research": True}]).to_csv(root / "outer_market.csv", index=False)
+    outer, model, audit = build_unified_histories(
+        api_football_history=tmp_path / "missing.csv",
+        the_odds_snapshot_root=tmp_path / "missing_odds",
+        nowscore_snapshot_root=root.parent,
+    )
+    assert outer.iloc[0]["source"] == "nowscore"
+    assert model.empty
+    assert audit["nowscore_outer_rows"] == 1
+
+
+def test_locked_unified_history_is_deferred_without_losing_snapshot(monkeypatch, tmp_path):
+    outer = pd.DataFrame([{"record_id": "n1"}])
+    model = pd.DataFrame([{"snapshot_id": "s1"}])
+    target = tmp_path / "history.csv"
+    original = pd.DataFrame.to_csv
+
+    def locked(self, path_or_buf=None, *args, **kwargs):
+        if str(path_or_buf) == str(target):
+            raise PermissionError("locked")
+        return original(self, path_or_buf, *args, **kwargs)
+
+    monkeypatch.setattr(pd.DataFrame, "to_csv", locked)
+    result = persist_unified_histories(
+        outer, model, {}, outer_path=target, model_path=tmp_path / "model.csv",
+        audit_path=tmp_path / "audit.json", pending_root=tmp_path / "pending",
+    )
+    pending = __import__("pathlib").Path(result["pending_dir"])
+    assert result["persistence_status"] == "deferred_file_locked"
+    assert (pending / "outer_market_history.csv").exists()
+    assert (pending / "external_market_snapshot_history.csv").exists()

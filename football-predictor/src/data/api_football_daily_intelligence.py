@@ -103,9 +103,13 @@ def collect_api_football_daily_intelligence(
         if calls and request_interval_seconds > 0:
             time.sleep(float(request_interval_seconds))
         payload = client.get(endpoint, params); calls += 1
-        if payload.get("errors"):
-            raise RuntimeError(f"API-Football {label} payload contains errors")
         raw_files.append(_archive(payload, raw / date / f"{stamp}_{label}.json"))
+        if payload.get("errors"):
+            errors = payload["errors"]
+            # Persist the provider response first, including unsuccessful calls.
+            # Only categories enter the exception; credentials/account text do not.
+            categories = sorted(str(key) for key in errors) if isinstance(errors, dict) else ["provider_error"]
+            raise RuntimeError(f"API-Football {label} payload contains errors: {','.join(categories)}")
         return payload
 
     fixture_dates = _fixture_dates(scan_fixtures, date)
@@ -168,7 +172,8 @@ def collect_api_football_daily_intelligence(
         loads = pd.DataFrame(columns=REQUIRED_COLUMNS)
     quota_headers = getattr(client, "last_headers", {})
     return converted, mapping, {
-        "schema_version": 1, "source": "api_football", "status": "ok" if not failures else "partial",
+        "schema_version": 1, "source": "api_football",
+        "status": "partial" if failures or mapping_audit["review_required"] else "ok",
         "observed_at": observed.isoformat(), "api_calls": calls, "fixture_dates": fixture_dates,
         "mapping": mapping_audit,
         "future_mapped_fixtures": int(len(future)), "absence_rows": int(len(absences)),

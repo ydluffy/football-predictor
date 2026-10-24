@@ -58,3 +58,30 @@ def test_post_kickoff_and_unmapped_rows_are_excluded():
     result = build_api_football_handicap_movement(history)
 
     assert result.empty
+
+
+def _movement_pair(home_team: str, away_team: str) -> pd.DataFrame:
+    rows = [
+        _row("open", "2026-08-16T10:00:00Z", -0.75, 1.90, 1.90, "a"),
+        _row("final", "2026-08-16T18:00:00Z", -1.0, 2.00, 1.80, "a"),
+    ]
+    return pd.DataFrame(
+        [
+            {**row, "match_id": "2026-08-16|018", "home_team": home_team, "away_team": away_team}
+            for row in rows
+        ]
+    )
+
+
+def test_english_team_names_are_localized_to_the_fixtures_feed_names():
+    row = build_api_football_handicap_movement(_movement_pair("Racing Santander", "Villarreal")).iloc[0]
+
+    assert row["home_team"] == "桑坦德"
+    assert row["away_team"] == "比利亚雷"
+
+
+def test_team_names_that_already_contain_chinese_are_kept_verbatim():
+    row = build_api_football_handicap_movement(_movement_pair("桑坦德竞技", "比利亚雷亚尔")).iloc[0]
+
+    assert row["home_team"] == "桑坦德竞技"
+    assert row["away_team"] == "比利亚雷亚尔"

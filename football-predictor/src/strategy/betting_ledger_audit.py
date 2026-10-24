@@ -85,6 +85,11 @@ def audit_betting_ledger(ledger_path: str | Path) -> dict[str, Any]:
             )
 
         stake = _number(row.get("stake"))
+        batch_id = re.fullmatch(r'SPORTTERY_BATCH_(\d{8})_([a-f0-9]{12})_(SAFE|VALUE)', plan_id)
+        if batch_id:
+            required_type = {'SAFE': '稳健', 'VALUE': '价值'}[batch_id[3]]
+            if stake is None or stake > 100 or _text(row.get('plan_type')) != required_type or _text(row.get('date')).replace('-', '') != batch_id[1]:
+                issues.append({'severity': 'error', 'code': 'invalid_formal_batch_policy', 'row': row_number, 'plan_id': plan_id})
         if stake is None or stake <= 0:
             issues.append(
                 {"severity": "error", "code": "invalid_stake", "row": row_number, "plan_id": plan_id}

@@ -37,3 +37,11 @@ def test_team_alias_registry_normalizes_cross_source_names() -> None:
     assert registry.resolve("Man Utd") == "Manchester United"
     assert registry.resolve("横滨水手") == "Yokohama F. Marinos"
     assert registry.annotate("尚未登记球队")["team_alias_known"] is False
+
+
+def test_team_alias_registry_exposes_the_chinese_alias_behind_a_canonical_name() -> None:
+    registry = load_team_alias_registry()
+
+    assert registry.chinese_alias("Racing Santander") == "桑坦德"
+    assert registry.chinese_alias("桑坦德竞技") == "桑坦德"
+    assert registry.chinese_alias("尚未登记球队") is None

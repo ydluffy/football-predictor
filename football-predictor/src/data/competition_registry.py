@@ -19,6 +19,9 @@ def normalize_alias(value: object) -> str:
     return re.sub(r"[^0-9a-z\u3400-\u9fff]+", "", text)
 
 
+CJK_PATTERN = re.compile(r"[\u3400-\u9fff]")
+
+
 @dataclass(frozen=True)
 class CompetitionDefinition:
     competition_id: str
@@ -108,10 +111,22 @@ class CompetitionRegistry:
 class TeamAliasRegistry:
     def __init__(self, records: Iterable[dict[str, Any]]) -> None:
         self._aliases: dict[str, str] = {}
+        self._chinese: dict[str, str] = {}
         for record in records:
             canonical = str(record.get("canonical") or "").strip()
             if not canonical:
                 raise ValueError("team alias record requires canonical")
+            if canonical not in self._chinese:
+                chinese = next(
+                    (
+                        str(alias).strip()
+                        for alias in (record.get("aliases") or [])
+                        if CJK_PATTERN.search(str(alias))
+                    ),
+                    "",
+                )
+                if chinese:
+                    self._chinese[canonical] = chinese
             for alias in (canonical, *(record.get("aliases") or [])):
                 key = normalize_alias(alias)
                 previous = self._aliases.get(key)
@@ -121,6 +136,15 @@ class TeamAliasRegistry:
 
     def resolve(self, value: object) -> str | None:
         return self._aliases.get(normalize_alias(value))
+
+    def chinese_alias(self, value: object) -> str | None:
+        """Return the table's Chinese name for a team, when it records one.
+
+        ``canonical`` stays English for model-facing keys, so this is the only way to
+        recover the Chinese label used by the fixtures feed.
+        """
+        canonical = self.resolve(value)
+        return self._chinese.get(canonical) if canonical is not None else None
 
     def annotate(self, value: object) -> dict[str, Any]:
         raw = str(value or "").strip()

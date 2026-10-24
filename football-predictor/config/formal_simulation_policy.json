@@ -1,0 +1,13 @@
+{
+  "version": "formal_per_batch_v1",
+  "effective_from": "2026-10-18T15:41:07+08:00",
+  "scope": "simulation_only",
+  "quota_scope": "sales_day_and_registered_batch",
+  "budget_per_type": 100,
+  "max_per_type_per_batch": 1,
+  "max_shared_matches": 1,
+  "required_cards": ["稳健", "价值"],
+  "missing_candidate_action": "explicit_empty_card",
+  "real_money_allowed": false,
+  "historical_backfill_allowed": false
+}

@@ -102,6 +102,13 @@ export async function loadSportteryFixturesBySalesDay(salesDay: string): Promise
     .map((item) => toFixtureRow(effectiveSalesDay, item));
 }
 
+export async function hasConfirmedEmptySportteryScan(salesDay: string): Promise<boolean> {
+  const filePath = await findLatestSportteryScanFile(salesDay);
+  if (!filePath) return false;
+  const payload = JSON.parse(await readFile(/* turbopackIgnore: true */ filePath, "utf8")) as SportteryScanPayload;
+  return (!payload.sales_day || payload.sales_day === salesDay) && Array.isArray(payload.fixtures) && payload.fixtures.length === 0;
+}
+
 export async function loadSportteryFixtureBySyntheticId(fixtureId: number): Promise<FixtureListRow | null> {
   const parsed = parseSportteryFixtureId(fixtureId);
   if (!parsed) return null;

@@ -211,8 +211,8 @@ def group_on_sale_fixtures(fixtures: Iterable[dict[str, Any]], *, sales_day: dat
         if not clusters:
             clusters.append([fixture])
             continue
-        previous = parse_china_datetime(clusters[-1][-1]["kickoff"])
-        if kickoff - previous <= timedelta(minutes=90):
+        first_in_cluster = parse_china_datetime(clusters[-1][0]["kickoff"])
+        if kickoff - first_in_cluster <= timedelta(minutes=90):
             clusters[-1].append(fixture)
         else:
             clusters.append([fixture])
@@ -239,14 +239,31 @@ def group_on_sale_fixtures(fixtures: Iterable[dict[str, Any]], *, sales_day: dat
                 sales_cutoff=group_cutoff,
             )
         )
-    return result
+    return coalesce_time_groups(result)
 
 
 def task_key(sales_day: date, time_group: str, purpose: str = "终版分析") -> str:
     return f"{sales_day.isoformat()}|{time_group}|{purpose}"
 
 
+def coalesce_time_groups(groups):
+    # Same decision/lock/cutoff is one execution and budget batch, even when
+    # tomorrow's kickoffs span multiple original ninety-minute clusters.
+    merged = {}
+    for group in groups:
+        identity = (group.run_at, group.hard_lock, group.sales_cutoff)
+        merged.setdefault(identity, []).extend(group.fixtures)
+    combined = []
+    for (run_at, hard_lock, cutoff), fixtures in merged.items():
+        fixtures = sorted(fixtures, key=lambda f:(f['kickoff'], f['match_number']))
+        first, last = [parse_china_datetime(fixtures[i]['kickoff']) for i in (0,-1)]
+        label = first.strftime('%H:%M') if first == last else f'{first:%H:%M}-{last:%H:%M}'
+        combined.append(TimeGroup(label, tuple(fixtures), run_at, hard_lock, cutoff))
+    return combined
+
+
 def build_task_records(groups: Iterable[TimeGroup], *, sales_day: date) -> list[dict[str, Any]]:
+    groups = coalesce_time_groups(groups)
     records = []
     for group in groups:
         key = task_key(sales_day, group.label)
