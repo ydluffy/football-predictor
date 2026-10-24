@@ -1,0 +1,50 @@
+{
+  "checked_on": "2026-10-22",
+  "capture_method": "web_reader_manual_extraction",
+  "raw_page_archived": false,
+  "players": [
+    {
+      "api_id": "182603", "local_name": "Jon Ander Olasagasti", "team": "Levante",
+      "name": "Jon Ander Olasagasti", "birth_date": "2000-08-16", "height_cm": 176, "weight_kg": 74,
+      "url": "https://www.laliga.com/jugador/jon-ander-olasagasti",
+      "association_basis": "exact local name and observed team agree with official league page"
+    },
+    {
+      "api_id": "369500", "local_name": "I. Ganiou", "team": "Lens",
+      "name": "Ismaëlo Ganiou", "birth_date": "2005-03-14", "nationality": "France", "preferred_foot": "right",
+      "url": "https://www.rclens.fr/fr/equipe-premiere/effectif/joueurs/ismaelo-ganiou",
+      "association_basis": "initial, surname and observed team agree; do not assume source name Pierre Ganiou is an approved alias"
+    },
+    {
+      "api_id": "330612", "local_name": "T. Buchmann", "team": "Bayern München",
+      "name": "Tarek Buchmann", "birth_date": "2005-02-28", "height_cm": 188, "weight_kg": 86,
+      "url": "https://www.bundesliga.com/de/spieler/tarek-buchmann",
+      "official_page_team": "1. FC Nürnberg",
+      "association_basis": "name and former Bayern profile support candidate only; league page team differs, no membership overwrite"
+    },
+    {
+      "api_id": "183849", "local_name": "Aitor Paredes", "team": "Athletic Club",
+      "name": "Aitor Paredes Casamichana", "birth_date": "2000-04-29",
+      "url": "https://www.athletic-club.eus/en/players/aitor-paredes-casamichana/",
+      "association_basis": "local name and observed team agree with official player page"
+    },
+    {
+      "api_id": "287680", "local_name": "Maroan Sannadi", "team": "Athletic Club",
+      "name": "Maroan Sannadi Harrouch", "birth_date": "2001-02-01",
+      "url": "https://www.athletic-club.eus/jugadores/maroan-sannadi-harrouch/",
+      "association_basis": "local name and observed team agree with official player page"
+    },
+    {
+      "api_id": "341640", "local_name": "R. Asencio", "team": "Real Madrid",
+      "name": "Raúl Asencio del Rosario", "birth_date": "2003-02-13",
+      "url": "https://www.realmadrid.com/es-ES/futbol/primer-equipo-masculino/plantilla/raul-asencio-del-rosario/",
+      "association_basis": "initial, surname and observed team agree with official player page"
+    },
+    {
+      "api_id": "47225", "local_name": "Brugui", "team": "Levante",
+      "name": "Roger Brugué", "birth_date": "1996-11-04",
+      "url": "https://tienda.levanteud.com/es/collections/r-brugue",
+      "association_basis": "official club shop explicitly identifies Roger Brugue as Brugui; local birth agrees"
+    }
+  ]
+}
