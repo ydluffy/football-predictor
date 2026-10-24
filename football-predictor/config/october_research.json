@@ -1,0 +1,11 @@
+{
+  "protocol_version": "october_research_v2_focused",
+  "research_focus": "independent_comparison_only",
+  "effective_from": "2026-10-02",
+  "mode": "simulation_only",
+  "real_money_allowed": false,
+  "max_pairs_per_family": 12,
+  "max_structure_matches": 4,
+  "unit_stake": 2.0,
+  "production_promotion_allowed": false
+}
