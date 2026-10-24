@@ -252,7 +252,7 @@ def chunked(items: list[str], size: int) -> Iterable[list[str]]:
 def main() -> int:
     sys.stdout.reconfigure(encoding="utf-8")
     parser = argparse.ArgumentParser(description="将本地 codex 产物同步到 Supabase")
-    parser.add_argument("--base-url", default="http://127.0.0.1:3000", help="本地 Web 服务地址")
+    parser.add_argument("--base-url", default="http://127.0.0.1:3100", help="本地 Web 服务地址")
     parser.add_argument(
         "--sales-day", action="append", default=[], help="指定销售日，可重复传入多次"
     )
@@ -286,7 +286,7 @@ def main() -> int:
     if not status.ok:
         print(
             "\n本地 Web 服务不可用。请先启动：\n"
-            "  ALLOW_LOCAL_ARTIFACTS=true npx next dev -H 0.0.0.0 -p 3000\n",
+            "  node ..\\web\\node_modules\\next\\dist\\bin\\next dev -H 127.0.0.1 -p 3100\n",
             file=sys.stderr,
         )
         return 2
