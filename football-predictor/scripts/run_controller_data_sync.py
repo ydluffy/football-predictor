@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import os
+import subprocess
 import sys
 import time
 import uuid
@@ -33,6 +34,12 @@ STAGES = {
 }
 MOVEMENT_CSV = ROOT / "data/processed/handicap_market_movement_latest.csv"
 ALIGNMENT_CSV = ROOT / "artifacts/data/inner_outer_market_alignment_latest.csv"
+NOWSCORE_SNAPSHOT_ROOT = ROOT / "data/external/nowscore/snapshots"
+# 两个 latest 别名由构建器单独刷新，同步链路本身不会重建它们；--rebuild-market 用这两个入口。
+MARKET_ARTIFACT_BUILDERS = (
+    "scripts/build_handicap_market_movement_features.py",
+    "scripts/audit_inner_outer_market_alignment.py",
+)
 
 
 def save_json(path: Path, value: object) -> None:
@@ -121,14 +128,56 @@ def read_csv_rows(path: Path) -> list[dict]:
         return [dict(row) for row in csv.DictReader(stream)]
 
 
+def price_change_rows(day: str) -> list[dict]:
+    """Latest Nowscore price-change history for one sales day; no capture yet is not an error."""
+    snapshots = sorted(NOWSCORE_SNAPSHOT_ROOT.glob(f"{day}_*/price_changes.csv"))
+    if not snapshots:
+        return []
+    return [row for row in read_csv_rows(snapshots[-1]) if (row.get("odds_id") or "").strip()]
+
+
 def market_payload(day: str) -> dict:
-    """Movement/alignment rows are matched to fixtures server-side; empty files are not an error."""
+    """Only the requested sales day's rows are sent: the server matches rows against that day's fixtures.
+
+    Both artifacts are append-only `latest` files; shipping every historical day would send megabytes
+    per request and turn the unmatched counters into noise instead of a signal.
+    """
     return {
         "sales_day": day,
-        "movement_rows": read_csv_rows(MOVEMENT_CSV),
-        "alignment_rows": read_csv_rows(ALIGNMENT_CSV),
-        "source_note": "handicap_market_movement_latest.csv+inner_outer_market_alignment_latest.csv",
+        "movement_rows": [row for row in read_csv_rows(MOVEMENT_CSV)
+                          if row.get("match_id", "").startswith(f"{day}|")],
+        "alignment_rows": [row for row in read_csv_rows(ALIGNMENT_CSV) if row.get("sales_day") == day],
+        "price_change_rows": price_change_rows(day),
+        "source_note": "handicap_market_movement_latest.csv+inner_outer_market_alignment_latest.csv"
+                       "+nowscore snapshots/<day>_*/price_changes.csv",
     }
+
+
+def market_artifact_coverage(day: str) -> dict:
+    """Report the newest sales day each market artifact actually covers.
+
+    Both builders write fixed `latest` aliases that no sync step refreshes, so a stale
+    artifact would match no fixture and still be acknowledged as a verified sync.
+    """
+    movement_days = {row["match_id"].split("|", 1)[0] for row in read_csv_rows(MOVEMENT_CSV)
+                     if "|" in row.get("match_id", "")}
+    alignment_days = {row["sales_day"] for row in read_csv_rows(ALIGNMENT_CSV) if row.get("sales_day")}
+    newest = {"movement": max(movement_days, default=""), "alignment": max(alignment_days, default="")}
+    return {"newest_day": newest, "stale": [name for name, value in newest.items() if value and value < day]}
+
+
+def market_rows_unmatched(payload: dict) -> bool:
+    """Artifacts that match no fixture of the day mean the day was not really published."""
+    received = int(payload.get("movement_rows_received") or 0) + int(payload.get("alignment_rows_received") or 0)
+    matched = int(payload.get("matched_movement") or 0) + int(payload.get("matched_alignment") or 0)
+    return received > 0 and matched == 0
+
+
+def rebuild_market_artifacts(runner=subprocess.run) -> list[str]:
+    """Regenerate both latest aliases from the current local inputs before syncing."""
+    for script in MARKET_ARTIFACT_BUILDERS:
+        runner([sys.executable, str(ROOT / script)], check=True, cwd=str(ROOT))
+    return list(MARKET_ARTIFACT_BUILDERS)
 
 
 def attempt(session, base_url: str, job: dict) -> dict:
@@ -136,6 +185,11 @@ def attempt(session, base_url: str, job: dict) -> dict:
     if step == "snapshot":
         body = {"date": day}
     elif step == "market":
+        coverage = market_artifact_coverage(day)
+        if coverage["stale"]:
+            return {"ok": False, "http_status": None, "reason": "stale_local_artifact",
+                    "stale_artifacts": coverage["stale"], "newest_day": coverage["newest_day"],
+                    "request_attempts": 0}
         body = market_payload(day)
     else:
         body = {"sales_days": [day]}
@@ -163,8 +217,15 @@ def attempt(session, base_url: str, job: dict) -> dict:
                 result["counts"] = {key: payload[key] for key in (
                     "persisted_fixtures", "snapshotted", "persisted_review_summaries",
                     "persisted_review_plans", "persisted_analysis_runs", "persisted_market_intel",
+                    "persisted_price_changes", "movement_rows_received", "matched_movement",
+                    "alignment_rows_received", "matched_alignment",
                 ) if isinstance(payload.get(key), int)}
                 result["flags"] = {key: payload[key] for key in ("no_matches", "no_frozen_predictions") if key in payload}
+                if step == "market" and market_rows_unmatched(payload):
+                    # 匹配不上任何 fixture 时上游仍会回 verified；这里必须降级，避免"假成功"。
+                    result["ok"] = False
+                    result["reason"] = "market_rows_unmatched"
+                    verified = False
             if verified or response.status_code not in {429, 500, 502, 503, 504}:
                 return result
         except requests.RequestException:
@@ -199,12 +260,16 @@ def main() -> int:
     parser.add_argument("--stage", choices=STAGES)
     parser.add_argument("--retry-pending", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--rebuild-market", action="store_true",
+                        help="运行 movement/alignment 构建器刷新 latest 别名后再同步含 market 的阶段")
     parser.add_argument("--max-jobs", type=int, default=6)
     parser.add_argument("--base-url", default="http://127.0.0.1:3000")
     parser.add_argument("--state-dir", type=Path, default=ROOT / "artifacts/data/controller_sync")
     args = parser.parse_args()
     if bool(args.sales_day) != bool(args.stage) or not (args.stage or args.retry_pending):
         parser.error("use --stage with --sales-day, or --retry-pending")
+    if args.rebuild_market and (not args.stage or "market" not in STAGES[args.stage]):
+        parser.error("--rebuild-market requires a stage that includes the market step")
     if not 1 <= args.max_jobs <= 20:
         parser.error("--max-jobs must be between 1 and 20")
     parsed = urlparse(args.base_url)
@@ -222,7 +287,8 @@ def main() -> int:
         state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {"jobs": {}}
         if args.stage:
             enqueue(state, args.sales_day, args.stage, now)
-        print(json.dumps({"dry_run": True, "pending_keys": [k for k, j in state["jobs"].items() if j["status"] != "completed"]}, ensure_ascii=False))
+        print(json.dumps({"dry_run": True, "rebuild_market": args.rebuild_market,
+                          "pending_keys": [k for k, j in state["jobs"].items() if j["status"] != "completed"]}, ensure_ascii=False))
         return 0
     args.state_dir.mkdir(parents=True, exist_ok=True)
     lock = args.state_dir / "writer.lock"
@@ -236,6 +302,14 @@ def main() -> int:
         state = json.loads(state_path.read_text(encoding="utf-8")) if state_path.exists() else {"schema_version": 1, "jobs": {}}
         if args.stage:
             enqueue(state, args.sales_day, args.stage, now)
+        if args.rebuild_market:
+            try:
+                rebuilt = rebuild_market_artifacts()
+            except (OSError, subprocess.CalledProcessError) as error:
+                print(f"market_rebuild_failed: {error}; nothing was enqueued")
+                return 3
+        else:
+            rebuilt = []
         save_json(state_path, state)  # Durable intent before the first request.
         session = requests.Session()
         session.trust_env = False  # Never send loopback credentials through an ambient proxy.
@@ -251,7 +325,8 @@ def main() -> int:
                               lambda value: save_json(state_path, value), args.max_jobs)
         pending = [k for k, j in state["jobs"].items() if j["status"] != "completed"]
         audit = {"at": now.isoformat(), "results": results, "pending_keys": pending,
-                 "ok": not pending, "production_ledger_unchanged": before == ledger_hashes(),
+                 "ok": not pending, "rebuilt_market_artifacts": rebuilt,
+                 "production_ledger_unchanged": before == ledger_hashes(),
                  "source_ledger_sha256": before}
         save_json(args.state_dir / f"run_{now:%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}.json", audit)
         save_json(args.state_dir / "latest.json", audit)

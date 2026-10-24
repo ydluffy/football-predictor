@@ -43,14 +43,15 @@ def test_connection_failure_is_bounded_and_remains_pending():
     persist.assert_called_once()
 
 
-def test_only_pending_steps_retried_and_success_clears_them():
+def test_only_pending_steps_retried_and_success_clears_them(monkeypatch):
+    monkeypatch.setattr(sync, "market_artifact_coverage", lambda day: {"newest_day": {}, "stale": []})
     state = {"jobs": {}}
     sync.enqueue(state, ["2026-09-04"], "analysis", NOW)
     state["jobs"]["2026-09-04|snapshot"]["status"] = "completed"
     session = Mock()
     session.post.return_value = response()
     sync.run_pending(state, session, "http://localhost", NOW, Mock())
-    assert session.post.call_count == 2
+    assert session.post.call_count == len(sync.STAGES["analysis"]) - 1
     assert all(j["status"] == "completed" for j in state["jobs"].values())
 
 
@@ -69,7 +70,8 @@ def test_dry_run_has_no_writes_or_network(monkeypatch, tmp_path):
     assert not (tmp_path / "outbox").exists()
 
 
-def test_cooldown_and_batch_limit():
+def test_cooldown_and_batch_limit(monkeypatch):
+    monkeypatch.setattr(sync, "market_artifact_coverage", lambda day: {"newest_day": {}, "stale": []})
     state = {"jobs": {}}
     sync.enqueue(state, ["2026-09-04"], "analysis", NOW)
     session = Mock()
@@ -105,6 +107,31 @@ def test_frozen_ledger_export_does_not_mutate_or_recalculate(tmp_path):
     assert len(result["source_sha256"]) == 2
 
 
+def test_market_payload_uses_latest_nowscore_price_changes(tmp_path, monkeypatch):
+    root = tmp_path / "snapshots"
+    older = root / "2026-09-04_20260904T100000000000Z"
+    newer = root / "2026-09-04_20260904T120000000000Z"
+    older.mkdir(parents=True)
+    newer.mkdir(parents=True)
+    header = "odds_id,changed_at_raw,handicap_raw,home_price_raw,away_price_raw,handicap,is_opening\n"
+    (older / "price_changes.csv").write_text(header, encoding="utf-8")
+    (newer / "price_changes.csv").write_text(
+        header
+        + "17841227,10-19 17:56初,平手/半球,0.88,0.96,-0.25,True\n"
+        + ",10-19 17:56初,平手/半球,0.88,0.96,-0.25,True\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sync, "NOWSCORE_SNAPSHOT_ROOT", root)
+    monkeypatch.setattr(sync, "MOVEMENT_CSV", tmp_path / "absent_movement.csv")
+    monkeypatch.setattr(sync, "ALIGNMENT_CSV", tmp_path / "absent_alignment.csv")
+    rows = sync.price_change_rows("2026-09-04")
+    assert [row["odds_id"] for row in rows] == ["17841227"]
+    assert rows[0]["handicap"] == "-0.25"
+    assert sync.market_payload("2026-09-04")["price_change_rows"] == rows
+    monkeypatch.setattr(sync, "NOWSCORE_SNAPSHOT_ROOT", tmp_path / "absent")
+    assert sync.market_payload("2026-09-04")["price_change_rows"] == []
+
+
 def test_duplicate_ledger_identity_rejected(tmp_path):
     import pytest
     folder = tmp_path / "data/manual"
@@ -113,3 +140,68 @@ def test_duplicate_ledger_identity_rejected(tmp_path):
     (folder / "betting_plan_ledger.csv").write_text("date,plan_id,result,stake,payout,net_profit,roi,selections\n" + row + row, encoding="utf-8")
     with pytest.raises(ValueError, match="duplicate_or_missing_plan_id"):
         sync.frozen_review_export("2026-09-03", tmp_path)
+
+
+def test_market_payload_ships_only_the_requested_sales_day(tmp_path, monkeypatch):
+    movement = tmp_path / "movement.csv"
+    movement.write_text("match_id,home_team\n2026-09-04|001,A\n2026-09-03|002,B\n", encoding="utf-8")
+    alignment = tmp_path / "alignment.csv"
+    alignment.write_text(
+        "match_id,sales_day,home_team\n"
+        + "2026-09-04|001,2026-09-04,A\n"
+        + "2026-09-03|002,2026-09-03,B\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(sync, "MOVEMENT_CSV", movement)
+    monkeypatch.setattr(sync, "ALIGNMENT_CSV", alignment)
+    monkeypatch.setattr(sync, "NOWSCORE_SNAPSHOT_ROOT", tmp_path / "absent")
+    payload = sync.market_payload("2026-09-04")
+    assert [row["match_id"] for row in payload["movement_rows"]] == ["2026-09-04|001"]
+    assert [row["match_id"] for row in payload["alignment_rows"]] == ["2026-09-04|001"]
+
+
+def test_stale_market_artifact_is_rejected_without_a_request(tmp_path, monkeypatch):
+    movement = tmp_path / "movement.csv"
+    movement.write_text("match_id,home_team\n2026-08-16|001,A\n", encoding="utf-8")
+    alignment = tmp_path / "alignment.csv"
+    alignment.write_text("match_id,sales_day\n2026-08-17|001,2026-08-17\n", encoding="utf-8")
+    monkeypatch.setattr(sync, "MOVEMENT_CSV", movement)
+    monkeypatch.setattr(sync, "ALIGNMENT_CSV", alignment)
+    session = Mock()
+    result = sync.attempt(session, "http://localhost", {"step": "market", "sales_day": "2026-09-04"})
+    assert not result["ok"] and result["reason"] == "stale_local_artifact"
+    assert set(result["stale_artifacts"]) == {"movement", "alignment"}
+    assert result["request_attempts"] == 0
+    assert session.post.call_count == 0
+
+
+def test_market_rows_matching_no_fixture_are_not_a_success(monkeypatch):
+    monkeypatch.setattr(sync, "market_artifact_coverage", lambda day: {"newest_day": {}, "stale": []})
+    monkeypatch.setattr(sync, "market_payload", lambda day: {"sales_day": day})
+    payload = Mock(ok=True, status_code=200)
+    payload.json.return_value = {"verified": True, "fixture_count": 13, "persisted_market_intel": 0,
+                                 "movement_rows_received": 9, "matched_movement": 0,
+                                 "alignment_rows_received": 9, "matched_alignment": 0}
+    session = Mock()
+    session.post.return_value = payload
+    result = sync.attempt(session, "http://localhost", {"step": "market", "sales_day": "2026-09-04"})
+    assert not result["ok"] and result["reason"] == "market_rows_unmatched"
+    assert result["counts"]["movement_rows_received"] == 9
+    assert session.post.call_count == 1
+
+
+def test_rebuild_market_artifacts_runs_both_builders():
+    calls = []
+    sync.rebuild_market_artifacts(runner=lambda command, **kwargs: calls.append((command, kwargs)))
+    assert [command[1] for command, _ in calls] == [str(sync.ROOT / name) for name in sync.MARKET_ARTIFACT_BUILDERS]
+    assert all(kwargs["check"] is True and kwargs["cwd"] == str(sync.ROOT) for _, kwargs in calls)
+
+
+def test_rebuild_market_needs_a_stage_containing_market(monkeypatch, tmp_path):
+    import sys
+    import pytest
+    monkeypatch.setattr(sys, "argv", ["sync", "--sales-day", "2026-09-04", "--stage", "review",
+                                      "--rebuild-market", "--state-dir", str(tmp_path / "outbox")])
+    with pytest.raises(SystemExit):
+        sync.main()
+    assert not (tmp_path / "outbox").exists()

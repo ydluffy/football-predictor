@@ -1,6 +1,16 @@
+2026-10-18 18:38全批修复：build_multi_play_betting_strategy.py现在评估过滤后输入全批，旧--max-matches 3不再截断分析。须核对策略input_rows/match_rows与注册场次；缺赔率逐场说明，不能把截断误报缺赔率。原空回执如因范围遗漏错误产生，只允许未过硬锁且原两卡均0时使用record_formal_batch.py --correct-empty-scope --prior-strategy-audit <原策略审计>生成独立_scope_correction回执；原文件和预测保留，非空票不得改写。
+
+2026-10-18用户授权优先规则：每批稳健/价值各100元虚拟预算，取消旧每日各一份限制。完整读取docs/formal_batch_simulation.md与config/formal_simulation_policy.json。每批正文及审计必须展示两张卡，证据不足保留空卡/投入0/原因，禁止凑票或补写历史。终版必须经scripts/record_formal_batch.py按规范batch-key入账并保存回执，禁止历史runner的每日plan_type过滤及手工追加。价值来源及独立覆盖单列，不冒称已验证正EV；复盘按批次和类型核算再汇总全日实际投入。
+
 # 足球预测项目计划任务
 
+2026-10-17调度事故修复：TZID规则在当前桌面运行时出现8小时偏移，文本及dateutil回读不能证明应用执行时间。每次受支持接口更新及view后，必须运行scripts/verify_controller_runtime_schedule.py，核对只读sqlite的next_run_nominal_at与目标北京时间精确一致（next_run_at允许5分钟抖动）。当前使用UTC DTSTART及UTC小时，核验失败保留pending_reschedule=true；不得直接修改数据库/toml。详见docs/controller_heartbeat_prompt.md。机器待机或应用未运行仍可能阻止实际唤醒。
+
+2026-10-12新增独立研究必读：docs/independent_comparison_controller.md。每批终版新增run_independent_comparison.py freeze，次日复盘新增settle；模型、市场和固定融合同条件对照，原正式策略保留。仍使用唯一心跳，已有下一唤醒时间不因流程升级改变。
+
 项目目录：`E:\ball-match-prediction-system\football-predictor`
+
+2026-10-02新增授权的宽松模拟研究层见 `docs/october_simulation_protocol.md`。所有正式终版后在硬锁前冻结新研究方案，次日复盘结算；研究层不沿用正式概率/价格/数量筛选，但保持赛前数据和时间真实性。现有正式策略保留为基准，不因模拟方案增加而宣称模型已经晋级或真实资金可用。唯一心跳和国庆恢复时间不变。
 
 生产调度使用绑定当月总控对话的单一 heartbeat，直接运行于本地项目目录，不使用隔离工作树。独立 cron 仅保留为暂停的人工恢复模板，不得与总控同时启用。
 
@@ -36,9 +46,17 @@
 - 每次更新总控状态和下一次心跳后：同命令使用 `--stage controller --sales-day <当日>`，将最新编排同步到网页。
 - 每次唤醒在处理时间敏感的采集/终版任务之后，运行 `scripts/run_controller_data_sync.py --retry-pending`。紧邻硬锁时优先生产任务，同步延后，不为重试新增高频唤醒。
 
-### 市场信号同步（2026-10-01 登记）
+### 市场信号同步（2026-10-01 登记，2026-10-21 加门禁）
 
-`confirm` 与 `analysis` 阶段自登记起额外包含 `market` 步骤：读取 `data/processed/handicap_market_movement_latest.csv` 与 `artifacts/data/inner_outer_market_alignment_latest.csv`，经 `/api/automation/sync-market` 按“主客队名 + 北京时间开赛日期”匹配到当日 fixtures 后写入 `fixture_market_intel` 表。匹配不上的行只计数不报错；两个文件缺失时同步 0 行不算失败。网页端 `/api/market-intel` 已改为优先读该表，本地 CSV 仅作本地开发回退。首次使用前需在 Supabase 执行一次 `supabase/migrations/add_fixture_market_intel.sql`。重建市场特征后（例如单独重跑 movement/alignment 构建器）可用 `--stage market --sales-day <当日>` 单独补同步；该步骤不改变任何预测、台账或生产结论。
+`confirm` 与 `analysis` 阶段自登记起额外包含 `market` 步骤：读取 `data/processed/handicap_market_movement_latest.csv` 与 `artifacts/data/inner_outer_market_alignment_latest.csv`，**只取本次销售日当天的行**（movement 按 `match_id` 前缀、alignment 按 `sales_day`），经 `/api/automation/sync-market` 按“主客队名 + 北京时间开赛日期”匹配到当日 fixtures 后写入 `fixture_market_intel` 表；变盘明细同样只取该销售日的捷报快照。网页端 `/api/market-intel` 已改为优先读该表，本地 CSV 仅作本地开发回退。首次使用前需在 Supabase 执行一次 `supabase/migrations/add_fixture_market_intel.sql`。
+
+movement 产物的主客队名必须是中文：远端 `fixtures` 存中文名，而 `history.csv` 里同一场比赛可能同时存在 API-Football 英文行与中文行，取错就只会在服务端静默落到 0 行。因此构建器会用 `data/mappings/team_aliases.json` 把仅含拉丁字母的队名换成该表登记的中文名，已含中文的队名保持原样；队名口径仍不一致时按上条降级处理，不得当作成功。
+
+两个 latest 别名由独立构建器刷新，同步链路本身不重建它们，因此发送前必须做新鲜度门禁：任一产物覆盖的最新销售日早于本次销售日时，不发请求，记录 `stale_local_artifact` 与各自 `newest_day`，该步骤保持待同步。请求发出后即使上游回 `verified`，只要“收到行数 > 0 且匹配到 fixtures 的行数为 0”，必须降级为 `market_rows_unmatched` 失败，不得记成功。只有两个产物都确实没有该日数据（收到 0 行）时才允许视为无信号。
+
+`2026-10-21` 曾因 movement latest 停更在 `2026-08-27` 而出现“HTTP 200 + 回读通过但 0 行入库”的假成功，故登记本条门禁并一次性重建产物；不得把该次重建解释为允许日常默认回填。
+
+需要连产物一起刷新时使用 `--rebuild-market`（仅允许配合含 `market` 步骤的 `--stage`）：先依次运行 `scripts/build_handicap_market_movement_features.py` 与 `scripts/audit_inner_outer_market_alignment.py` 刷新两个 latest 别名，再进入同步；重建失败时不入队并退出码 3。日常心跳不得默认开启该开关。重建后也可用 `--stage market --sales-day <当日>` 分项补同步；该步骤不改变任何预测、台账或生产结论。
 
 日期必须显式指定；日常不得用默认40天历史回填。新增入口只导出冻结产物，不调用在线预测引擎；缺失快照不得伪造，预测来源时间保留原文件时间。`--dry-run` 只检查计划，不发网络请求、不写队列。
 
@@ -179,7 +197,7 @@ The Odds API 的确认快照保存到 `data/external/the_odds_api_sporttery/snap
 
 API-Football 亚洲让球快照统一调用 `scripts/import_api_football_odds_snapshot.py --scan-json <确认扫描JSON> --date <北京时间日期>`。脚本一次取得当天赛程并与全部体彩场次按球队及开赛时间唯一匹配；需要限制单项赛事时才增加 `--league-id <赛事ID>`。Free 套餐不允许直接查询当前赛季历史参数，因此禁止改用不可用的赛季历史参数。原始 JSON 写入 `data/external/api_football_odds/raw/`，全量替代盘写入 `snapshots/`，累计历史写入 `history.csv`；同一快照另生成 `_primary.csv`，每家机构只保留赔率最均衡且价格差阈值通过的主盘口。全量替代盘可用于价格曲线研究，但生产模型默认只能读取 `eligible_for_primary_research=true` 的主盘口行。开赛后、映射歧义、开赛时间缺失、非四分之一盘口全部只归档不研究。
 
-每次 API-Football 亚洲盘快照成功后，运行 `scripts/build_handicap_market_movement_features.py`。该脚本按同一 `match_id` 和快照时间聚合多家机构中位数，输出开盘/最新主队让球、去水概率、升退盘幅度、每小时变化速度，以及“胜赔变热但盘口不足”“升盘但水位不支持”等背离标记。只有至少两个赛前安全快照的场次才标记 `safe_for_shadow_features=true`。这些字段当前只进入 v3 影子研究，`production_probability_change_allowed=false`、`stake_increase_allowed=false`；不得直接把亚洲盘赢盘解释成体彩让胜。
+每次 `scripts/build_unified_outer_market_history.py` 成功后，运行 `scripts/build_handicap_market_movement_features.py`。该构建器读的是统一历史而不是 API-Football 快照，因此只在 API-Football 成功后触发是不足的：完全依赖捷报后备采集的日子同样必须重建，否则 `latest` 停更会让市场信号同步静默落空。脚本按同一 `match_id` 和快照时间聚合多家机构中位数，主客队名按上文中文口径归一，输出开盘/最新主队让球、去水概率、升退盘幅度、每小时变化速度，以及“胜赔变热但盘口不足”“升盘但水位不支持”等背离标记。只有至少两个赛前安全快照的场次才标记 `safe_for_shadow_features=true`。这些字段当前只进入 v3 影子研究，`production_probability_change_allowed=false`、`stake_increase_allowed=false`；不得直接把亚洲盘赢盘解释成体彩让胜。
 
 每次体彩官方快照和外盘快照均归档后，必须运行 `scripts/audit_inner_outer_market_alignment.py`。同一体彩 `match_id` 只算身份配对；两边 `captured_at` 相差不超过30分钟且都早于开赛才算时间对齐。审计输出固定写入 `artifacts/data/inner_outer_market_alignment_latest.csv/json`。时间差超过阈值的记录可以保留做来源覆盖审计，但不得进入内外盘差值训练；至少300个不同比赛达到时间对齐前，v2的历史赔率闸门保持未通过。
 
@@ -280,3 +298,18 @@ API-Football 亚洲让球快照统一调用 `scripts/import_api_football_odds_sn
 6. 所有晋级必须带测试、基线对比、回滚点和中文变更说明。
 
 回顾完成后创建下一月份的本地总控对话，读取交接 JSON，随后把唯一 heartbeat 控制器迁移到新对话。迁移失败时继续使用旧总控并在次日 10:00 重试，禁止同时启用两个控制器。
+
+
+2026-10-19用户授权优先修复：一次唤醒连续处理全部已到期且未过硬锁的注册终版批次，替代旧“每次只执行一项”。先运行scripts/next_controller_task.py --due-batches读取本轮队列；每批重新检查当前时间、身份、官方数据新鲜度及READY，不因共享快照绕过任何门禁。相同全页采集可共享原始档案，但逐批过滤市场/扫描、逐批生成READY和规范batch-key，禁止把8场混作一个批次或重复入账。每批立即落盘进度/冻结回执；单批失败保存失败原因后继续其他独立批次，禁止无界重试；临近锁时停止新增方案。所有本轮到期批次完成或留下失败审计后，再选择唯一下一任务并通过受支持接口重排、view及运行时核验。不得每完成一批就结束当前唤醒。今晚21:00依次处理001—002、003—007、008，保持各批稳健/价值卡和模型对照独立。
+
+每批新增总进球0—6/7+八档及净胜球−4及以下至+4及以上九档：纯球队专用及通用后备由同一比分联合分布聚合，保存完整概率、期望值、模型ID和真实预测时间；无方案也冻结评分，覆盖失败逐场说明。scripts/run_independent_comparison.py及run_universal_comparison.py已接入，新冻结包含total_probability_*、expected_total_goals、expected_goal_margin；settle输出goal_distribution_review，记录Log Loss/Brier/有序RPS及最高档命中率。报告必须逐场展示上述分布，并在13:00汇总评分及缺失/待结算原因。旧冻结缺总进球不补算或回填；研究产物不改变正式概率/金额。市场增强模型仍未获上线资格，真实样本160<300；不得把纯球队输出标成市场增强输出。
+
+
+2026-10-19后续优先规则：相同run_at、hard_lock、sales_cutoff的终版时间组，合并为一个规范注册批次；保留逐场开赛时间。不同销售/决策窗口不强行合并。build_task_records/group_on_sale_fixtures已实现，11:05生成任务采用新规则；不得拆组重复计额。今日001—008已合为2026-10-19|00:30-07:00|终版分析，旧三批归档且尚未冻结，不再执行旧三批。正式仅稳健/价值各100元上限，总计200元。
+
+每批正文新增四张分账研究卡：市场胜平负基准、独立模型胜平负、独立净胜球映射整数让球、净胜球与市场固定50%融合；build_comparison自动生成research_cards。卡片仅是现有方向对照experiments的展示，引用原每组每玩法12元理论预算，严禁再次加总入账。专用及通用后备不同覆盖集合分开报预算和成绩，模型身份明确；无覆盖或缺报价显示空卡/原因，未验证EV不称真实优势。总进球仅预测评分，未接入总进球票据结算前不新增此类投注方案。报告与settle入口必须分别展示上述family的投入返奖ROI及概率误差，不混入正式SAFE/VALUE。
+
+每次确认后及收尾运行scripts/audit_controller_readiness.py --sales-day <销售日> --output <独立审计JSON>；若确认后已有部分批次完成，按已冻结/终态排除后再核对剩余覆盖，不能将有效完成批次误报漏赛。任务完成必须有正式两卡回执、专用及通用研究冻结或明确失败/跳过、总进球/净胜球报告；缺项保留部分完成并从已冻结产物恢复，不重复出非空票。研究子进程最多180秒，超时落审计不阻断正式任务。当天队列清空后重排次日10:00并进行view及运行时核验；不依赖每日21:00规则自然恢复。
+
+
+2026-10-21欧冠跨联赛概率研究（仅新批次）：已接入scripts/run_independent_comparison.py原freeze/settle入口，新建研究挂钩scripts/ucl_research_hook.py。配置config/ucl_domestic_research.json；先读取docs/ucl_domestic_phase5_20261021.md。两个候选elo_only与elo_domestic_form独立保存胜平负、总进球八档、净胜球九档，并在官方报价完整时保存SPF/RQSPF市场及固定50%融合概率。预算为0，不新增票，不改变原正式或研究金额。必须本批READY、相同完整批次、官方采集时效、真实预测时间、模型训练截止、稳定提供商球队ID与开赛时间匹配；国内历史每队至少5场、距最新不超过120天；提供商赛程归档超过24小时须刷新，否则记录失败，禁止沿用。当前预检004/007/009/010可覆盖，005/008/011/012因对手国内历史未覆盖跳过。预检不等于冻结。原冻结已存在时不补写该新队列；新冻结独立保存artifacts/data/ucl_domestic_comparison/，子进程180秒限时，失败不阻断生产但须在报告中说明。13:00原settle自动调用该队列settle-pending，按候选分别展示Log Loss/Brier/有序RPS；同场两个候选算一次独立事件。历史开发留出已查看过，尚无前瞻结论，不声称优于市场。当前16:30及21:00批次安排不因研究改变。
