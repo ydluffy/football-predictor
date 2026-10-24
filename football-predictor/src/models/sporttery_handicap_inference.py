@@ -111,6 +111,7 @@ def predict_current_handicaps(
     rows: list[dict[str, Any]] = []
     for _, market in markets.fillna("").iterrows():
         output = _base_output(market)
+        output["prediction_at"] = analysis_time.isoformat() if analysis_time is not None else ""
         handicap_value = _float(market.get("home_handicap"))
         handicap = int(handicap_value) if handicap_value is not None and handicap_value.is_integer() else None
         competition_source, domain_reason = _competition_source(market.get("competition"))
@@ -211,6 +212,11 @@ def predict_current_handicaps(
                 "handicap_model_id": metadata.get("model_id", "sporttery_handicap_margin_v1"),
             }
         )
+        # Expose the underlying distribution for prospective research and review.
+        # Edge bins represent <= -4 and >= +4, not exact four-goal outcomes.
+        for index, label in enumerate(("away_4plus", "away_3", "away_2", "away_1", "draw", "home_1", "home_2", "home_3", "home_4plus")):
+            output[f"margin_probability_{label}"] = float(margin_probability[0, index])
+        output["margin_probability_source"] = "margin_model_market_features"
         rows.append(output)
     result = pd.DataFrame(rows)
     audit = {

@@ -63,6 +63,10 @@ def test_controlled_inference_uses_safe_mapped_external_snapshot():
         "handicap_blended_probability_home", "handicap_blended_probability_draw", "handicap_blended_probability_away"
     ]].astype(float).sum()
     assert abs(total - 1.0) < 1e-9
+    margin_columns = [column for column in predictions.columns if column.startswith("margin_probability_") and column != "margin_probability_source"]
+    assert len(margin_columns) == 9
+    assert abs(predictions.loc[0, margin_columns].astype(float).sum() - 1.0) < 1e-9
+    assert predictions.loc[0, "prediction_at"]
 
 
 def test_inference_blocks_when_external_snapshot_is_missing():

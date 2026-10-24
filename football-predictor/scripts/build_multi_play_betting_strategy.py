@@ -77,7 +77,7 @@ def main() -> None:
     parser.add_argument("--start-after", default="", help="Optional kickoff lower bound, e.g. 2026-07-14 11:00.")
     parser.add_argument("--start-before", default="", help="Optional kickoff upper bound, e.g. 2026-07-15 12:00.")
     parser.add_argument("--stake", type=float, default=100.0, help="Total stake per betting plan.")
-    parser.add_argument("--max-matches", type=int, default=3)
+    parser.add_argument("--max-matches", type=int, default=3, help="Legacy capacity hint; analysis always covers the entire filtered input batch.")
     parser.add_argument("--fixed-odds-min", type=float, default=6.00)
     parser.add_argument("--fixed-odds-max", type=float, default=10.00)
     parser.add_argument("--fixed-odds-target", type=float, default=8.00)
@@ -119,7 +119,7 @@ def main() -> None:
     match_rows, plans = build_multi_play_plans(
         markets,
         stake=args.stake,
-        max_matches=args.max_matches,
+        max_matches=max(args.max_matches, len(markets)),
         fixed_odds_min=args.fixed_odds_min,
         fixed_odds_max=args.fixed_odds_max,
         fixed_odds_target=args.fixed_odds_target,
@@ -210,6 +210,21 @@ def main() -> None:
         "report_output": str(report_output),
     }
     audit_output.parent.mkdir(parents=True, exist_ok=True)
+    audit['quota_scope'] = 'sales_day_and_registered_batch'
+    audit['formal_plan_cards'] = []
+    for kind in ['稳健', '价值']:
+        selected = plans_frame[plans_frame['plan_type'].eq(kind) & ~plans_frame['is_shadow'].astype(bool)] if not plans_frame.empty else plans_frame
+        audit['formal_plan_cards'].append({
+            'plan_type': kind, 'budget': 100, 'simulation_only': True,
+            'status': 'candidate' if not selected.empty else 'not_generated',
+            'reason': '' if not selected.empty else 'no_qualified_distinct_candidate',
+            'valuation_status': 'market_structure_observation_not_validated_advantage' if kind == '价值' else 'relative_stability_not_principal_protection',
+        })
+    with report_output.open('a', encoding='utf-8') as handle:
+        handle.write('\n\n每批模拟方案（每类预算上限100元；未使用预算保留）：\n')
+        for card in audit['formal_plan_cards']:
+            handle.write('\n- ' + card['plan_type'] + '：' + ('已有候选，须通过本批READY门禁后冻结入账。' if card['status'] == 'candidate' else '未生成；无合格且满足差异要求的候选，投入0元。'))
+        handle.write('\n\n价值候选属于市场结构观察，不代表已验证正期望收益；稳健不代表保本。\n')
     audit_output.write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
     print(json.dumps(audit, ensure_ascii=False, indent=2))
 
