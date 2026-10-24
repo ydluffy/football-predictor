@@ -7,6 +7,7 @@ import hashlib
 import json
 import math
 import os
+import shutil
 import subprocess
 import sys
 import time
@@ -18,6 +19,7 @@ from urllib.parse import urlparse
 import requests
 
 ROOT = Path(__file__).resolve().parents[1]
+WEB_ROOT = ROOT.parent / "web"
 TZ = timezone(timedelta(hours=8))
 STEPS = {
     "snapshot": "/api/automation/sync-snapshot",
@@ -40,6 +42,11 @@ MARKET_ARTIFACT_BUILDERS = (
     "scripts/build_handicap_market_movement_features.py",
     "scripts/audit_inner_outer_market_alignment.py",
 )
+HEALTH_STEP = "/api/automation/sync-health"
+# 只允许回环；用 node 直起 next 会得到一个单进程服务，结束时能精确回收，不留 npx 子进程。
+NODE_BIN = shutil.which("node") or "node"
+NEXT_BIN = WEB_ROOT / "node_modules/next/dist/bin/next"
+WEB_BUILD_INPUTS = ("src", "package.json", "next.config.ts", "next.config.js", "next.config.mjs", "tsconfig.json")
 
 
 def save_json(path: Path, value: object) -> None:
@@ -64,6 +71,114 @@ def admin_credentials(path: Path) -> dict:
                     value = value.split(" #", 1)[0].rstrip()
                 values[key] = value
     return {**values, **{k: os.environ[k] for k in allowed if k in os.environ}}
+
+
+def web_service_ready(base_url: str, timeout: float = 2.5) -> bool:
+    """探活本地 Web：只认可访问的 /api/status，任何网络异常都视为未就绪。"""
+    try:
+        with requests.Session() as probe:
+            probe.trust_env = False  # 与同步请求一致：回环不经过环境代理
+            response = probe.get(base_url + "/api/status", timeout=timeout, allow_redirects=False)
+        return response.status_code < 500
+    except requests.RequestException:
+        return False
+
+
+def web_build_stale() -> bool:
+    """构建产物缺失或落后于源码时需要重新构建，避免自拉起后长期服务旧代码。"""
+    stamp = WEB_ROOT / ".next" / "BUILD_ID"
+    if not stamp.exists():
+        return True
+    built_at = stamp.stat().st_mtime
+    for name in WEB_BUILD_INPUTS:
+        target = WEB_ROOT / name
+        if target.is_file() and target.stat().st_mtime > built_at:
+            return True
+        if target.is_dir() and any(item.stat().st_mtime > built_at for item in target.rglob("*") if item.is_file()):
+            return True
+    return False
+
+
+def build_web(runner=subprocess.run) -> bool:
+    """已有可用且不落后于源码的构建时直接复用，避免每次同步都重编译。"""
+    if not web_build_stale():
+        return False
+    runner([NODE_BIN, str(NEXT_BIN), "build"], cwd=str(WEB_ROOT), check=True)
+    return True
+
+
+def spawn_web_service(port: int, log_path: Path, spawner=subprocess.Popen):
+    log_path.parent.mkdir(parents=True, exist_ok=True)
+    with log_path.open("ab") as log:
+        return spawner([NODE_BIN, str(NEXT_BIN), "start", "-p", str(port)], cwd=str(WEB_ROOT),
+                       stdout=log, stderr=subprocess.STDOUT)
+
+
+def stop_web_service(process) -> None:
+    """只回收本进程拉起的 Web；手动启动的实例绝不由脚本关闭。"""
+    if process is None or process.poll() is not None:
+        return
+    process.terminate()
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        process.kill()
+
+
+def ensure_web_service(base_url: str, port: int, log_path: Path, timeout: float = 180.0,
+                       probe=web_service_ready, build=build_web, spawn=spawn_web_service,
+                       sleeper=time.sleep) -> tuple[bool, object | None, list[str]]:
+    """服务已在运行就复用（且绝不关闭）；未就绪才自拉起一个由本次同步负责回收的实例。
+
+    超时即如实返回未就绪，队列保持待同步，不假装网页已更新。
+    """
+    actions: list[str] = []
+    if probe(base_url):
+        return True, None, actions
+    try:
+        if build():
+            actions.append("rebuilt_web")
+    except (OSError, subprocess.CalledProcessError) as error:
+        return False, None, [*actions, f"web_build_failed:{error}"]
+    try:
+        process = spawn(port, log_path)
+    except OSError as error:
+        return False, None, [*actions, f"web_start_failed:{error}"]
+    actions.append(f"started_web:{port}")
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if probe(base_url):
+            return True, process, actions
+        sleeper(2)
+    stop_web_service(process)
+    return False, None, [*actions, "web_start_timeout"]
+
+
+def health_snapshot(now: datetime, stage: str | None, days: list[str], results: list[dict],
+                    pending: list[str], web_actions: list[str]) -> dict:
+    """网页端只读展示所需的同步健康度；细节仍以本地 run_*.json 审计为准。"""
+    return {
+        "at": now.isoformat(),
+        "ok": not pending,
+        "stage": stage,
+        "sales_days": sorted(set(days)),
+        "pending_keys": pending,
+        "pending_count": len(pending),
+        "web_actions": web_actions,
+        "web_started_by_sync": any(action.startswith("started_web:") for action in web_actions),
+        "last_failure_reason": next((r["reason"] for r in reversed(results) if not r["ok"]), None),
+        "steps": [{"key": r["key"], "step": r.get("step"), "ok": r["ok"], "reason": r.get("reason"),
+                   "http_status": r.get("http_status")} for r in results],
+    }
+
+
+def report_health(session, base_url: str, run: dict) -> bool:
+    """把本次同步结果写回网页端；失败只影响健康度展示，绝不改变同步结论。"""
+    try:
+        response = session.post(base_url + HEALTH_STEP, json={"run": run}, timeout=(3, 15), allow_redirects=False)
+        return response.ok
+    except requests.RequestException:
+        return False
 
 
 def enqueue(state: dict, days: list[str], stage: str, now: datetime) -> None:
@@ -249,7 +364,7 @@ def run_pending(state: dict, session, base_url: str, now: datetime, persist, max
         job["last_result"] = result
         delay = timedelta(days=1) if result["http_status"] in {401, 403} else timedelta(minutes=30)
         job["next_retry_at"] = (now + delay).isoformat()
-        results.append({"key": key, **result})
+        results.append({"key": key, "step": job["step"], **result})
         persist(state)
     return results
 
@@ -265,6 +380,10 @@ def main() -> int:
     parser.add_argument("--max-jobs", type=int, default=6)
     parser.add_argument("--base-url", default="http://127.0.0.1:3000")
     parser.add_argument("--state-dir", type=Path, default=ROOT / "artifacts/data/controller_sync")
+    parser.add_argument("--web-autostart", action=argparse.BooleanOptionalAction, default=True,
+                        help="本地 Web 未就绪时由同步脚本自行拉起（--no-web-autostart 关闭）")
+    parser.add_argument("--web-timeout", type=float, default=180.0,
+                        help="自拉起后等待 Web 就绪的秒数；超时保持待同步，不谎报成功")
     args = parser.parse_args()
     if bool(args.sales_day) != bool(args.stage) or not (args.stage or args.retry_pending):
         parser.error("use --stage with --sales-day, or --retry-pending")
@@ -311,27 +430,46 @@ def main() -> int:
         else:
             rebuilt = []
         save_json(state_path, state)  # Durable intent before the first request.
-        session = requests.Session()
-        session.trust_env = False  # Never send loopback credentials through an ambient proxy.
-        credentials = admin_credentials(ROOT.parent / "web/.env.local")
-        user, password = credentials.get("WORKBENCH_ADMIN_USER"), credentials.get("WORKBENCH_ADMIN_PASSWORD")
-        if user and password:
-            session.auth = (user, password)
         ledger_paths = [ROOT / "data/manual" / name for name in ("betting_plan_ledger.csv", "fixed_odds_shadow_ledger.csv")]
         def ledger_hashes():
             return {p.name: hashlib.sha256(p.read_bytes()).hexdigest() if p.exists() else None for p in ledger_paths}
         before = ledger_hashes()
-        results = run_pending(state, session, args.base_url.rstrip("/"), now,
-                              lambda value: save_json(state_path, value), args.max_jobs)
-        pending = [k for k, j in state["jobs"].items() if j["status"] != "completed"]
-        audit = {"at": now.isoformat(), "results": results, "pending_keys": pending,
-                 "ok": not pending, "rebuilt_market_artifacts": rebuilt,
-                 "production_ledger_unchanged": before == ledger_hashes(),
-                 "source_ledger_sha256": before}
-        save_json(args.state_dir / f"run_{now:%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}.json", audit)
-        save_json(args.state_dir / "latest.json", audit)
-        print(json.dumps(audit, ensure_ascii=False, indent=2))
-        return 1 if pending else 0
+        base_url = args.base_url.rstrip("/")
+        web_process = None
+        web_actions: list[str] = []
+        web_ready = not args.web_autostart
+        if args.web_autostart:
+            # 页面只读 Supabase：Web 没起来就等于没同步。这里自己把写入服务拉起来，用完整链路代替人工确认。
+            web_ready, web_process, web_actions = ensure_web_service(
+                base_url, parsed.port or 80, args.state_dir / "web_autostart.log", args.web_timeout)
+        try:
+            session = None
+            results: list[dict] = []
+            if web_ready:
+                session = requests.Session()
+                session.trust_env = False  # Never send loopback credentials through an ambient proxy.
+                credentials = admin_credentials(ROOT.parent / "web/.env.local")
+                user, password = credentials.get("WORKBENCH_ADMIN_USER"), credentials.get("WORKBENCH_ADMIN_PASSWORD")
+                if user and password:
+                    session.auth = (user, password)
+                results = run_pending(state, session, base_url, now,
+                                      lambda value: save_json(state_path, value), args.max_jobs)
+            pending = [k for k, j in state["jobs"].items() if j["status"] != "completed"]
+            audit = {"at": now.isoformat(), "results": results, "pending_keys": pending,
+                     "ok": not pending, "rebuilt_market_artifacts": rebuilt,
+                     "web_service_ready": web_ready, "web_autostart": web_actions, "health_reported": False,
+                     "production_ledger_unchanged": before == ledger_hashes(),
+                     "source_ledger_sha256": before}
+            if web_ready and session is not None and results:
+                # 空跑（无待同步步骤）不刷新健康度时间，否则页面会把“什么都没同步”显示成“刚刚同步过”。
+                audit["health_reported"] = report_health(
+                    session, base_url, health_snapshot(now, args.stage, args.sales_day, results, pending, web_actions))
+            save_json(args.state_dir / f"run_{now:%Y%m%d_%H%M%S}_{uuid.uuid4().hex[:8]}.json", audit)
+            save_json(args.state_dir / "latest.json", audit)
+            print(json.dumps(audit, ensure_ascii=False, indent=2))
+            return 1 if pending else 0
+        finally:
+            stop_web_service(web_process)
     finally:
         lock.unlink(missing_ok=True)
 

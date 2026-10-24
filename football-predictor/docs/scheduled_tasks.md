@@ -62,7 +62,7 @@ movement 产物的主客队名必须是中文：远端 `fixtures` 存中文名�
 
 历史同步兼容 daily/full 两种复盘JSON；若仅有Markdown报告，也从已结算正式/固定赔率影子台账只读导出结构化摘要和逐票记录，附原CSV哈希。不得重新结算，不把导出时间冒充复盘发生时间，CSV重复票号或结构损坏时保留失败。台账原件不修改，Supabase仅为展示副本。
 
-执行前确认本地 Web 服务已启动、`ALLOW_LOCAL_ARTIFACTS=true` 且 Supabase 配置存在。凭据从环境变量或 `web/.env.local` 读取，禁止把密码放入命令行或报告。服务不可用时保留待同步状态，不能声称网页已更新；不自动开放公网端口。
+同步前探活本地 Web（`/api/status`）：已在运行就直接复用且绝不关闭；未就绪时由同步脚本自行用 `node next build`（构建存在且不落后于 `web/src` 时跳过）+ `node next start` 拉起，等待就绪（默认 180 秒，`--web-timeout` 可调），仅在本次由脚本拉起时才在结束回收该实例。`.next` 构建日志写入 `artifacts/data/controller_sync/web_autostart.log`。用 `--no-web-autostart` 可关闭自拉起（远端/CI 场景）。仍需 `ALLOW_LOCAL_ARTIFACTS=true` 且 Supabase 配置存在；凭据从环境变量或 `web/.env.local` 读取，禁止把密码放入命令行或报告。服务不可用或自拉起超时则保留待同步状态，不能声称网页已更新；不自动开放公网端口。每次同步结束把健康度（`at` / 是否成功 / 待补偿数 / 最近失败原因）POST 到 `/api/automation/sync-health`，并入 `automation_controller_state.payload.last_sync` 供总控页只读展示；该上报失败只影响展示，不改变同步结论。
 
 队列：`artifacts/data/controller_sync/outbox.json`；逐次审计：同目录 `run_*.json`；最新摘要：`latest.json`。每个销售日/步骤唯一，网络请求前持久化，写后独立数据库SELECT核对主键和字段；不允许仅凭HTTP成功判定。重复主键按最新证据去重。每次最多处理6个步骤，每个步骤瞬时最多2次请求，普通失败30分钟后可补偿，401/403延迟一天并提示核验配置。后续唤醒只补未完成步骤；新阶段落盘可以重新触发该日期同步。
 

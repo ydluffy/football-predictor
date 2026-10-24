@@ -222,3 +222,57 @@ def test_rebuild_market_needs_a_stage_containing_market(monkeypatch, tmp_path):
     with pytest.raises(SystemExit):
         sync.main()
     assert not (tmp_path / "outbox").exists()
+
+
+def test_web_autostart_reuses_a_running_service_without_starting_or_stopping_it():
+    spawn, build = Mock(), Mock()
+    ready, process, actions = sync.ensure_web_service(
+        "http://127.0.0.1:3000", 3000, Path("unused.log"),
+        probe=lambda url: True, build=build, spawn=spawn)
+    assert ready and process is None and actions == []
+    build.assert_not_called()
+    spawn.assert_not_called()
+
+
+def test_web_autostart_only_reclaims_the_instance_it_started(tmp_path):
+    probes = iter([False, False, True])
+    process = Mock()
+    process.poll.return_value = None  # 服务仍在运行，才轮到本进程回收
+    spawned = []
+    ready, handle, actions = sync.ensure_web_service(
+        "http://127.0.0.1:3107", 3107, tmp_path / "web.log", timeout=5,
+        probe=lambda url: next(probes), build=lambda: True,
+        spawn=lambda port, log: (spawned.append((port, log)), process)[1],
+        sleeper=lambda seconds: None)
+    assert ready and handle is process
+    assert actions == ["rebuilt_web", "started_web:3107"]
+    assert [port for port, _ in spawned] == [3107]
+    sync.stop_web_service(process)
+    process.terminate.assert_called_once()
+
+
+def test_web_autostart_timeout_does_not_claim_success(tmp_path):
+    process = Mock()
+    process.poll.return_value = None
+    ready, handle, actions = sync.ensure_web_service(
+        "http://127.0.0.1:3000", 3000, tmp_path / "web.log", timeout=0,
+        probe=lambda url: False, build=lambda: False, spawn=lambda port, log: process,
+        sleeper=lambda seconds: None)
+    assert not ready and handle is None
+    assert actions[-1] == "web_start_timeout"  # 队列保持待同步，不谎报已更新
+    process.terminate.assert_called_once()
+
+
+def test_health_report_failure_never_changes_the_sync_outcome():
+    session = Mock()
+    session.post.side_effect = requests.ConnectionError("health endpoint unreachable")
+    assert sync.report_health(session, "http://localhost", {"at": "2026-09-04T18:15:00+08:00"}) is False
+
+
+def test_health_snapshot_marks_pending_and_last_failure():
+    results = [{"key": "2026-09-04|market", "step": "market", "ok": False, "http_status": 200,
+                "reason": "market_rows_unmatched", "request_attempts": 1}]
+    snapshot = sync.health_snapshot(NOW, "confirm", ["2026-09-04"], results, ["2026-09-04|market"], ["started_web:3000"])
+    assert snapshot["ok"] is False and snapshot["pending_count"] == 1
+    assert snapshot["last_failure_reason"] == "market_rows_unmatched"
+    assert snapshot["web_started_by_sync"] is True
