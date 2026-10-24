@@ -78,3 +78,96 @@ def test_offline_capture_only_uses_verified_future_on_sale_fixture(tmp_path):
     assert len(rows) == 1
     assert rows[0]["eligible_for_research"] == "False"
     assert rows[0]["reject_reason"] == "offline_capture_time_unverified"
+
+
+ASIAN_XML = '''<?xml version="1.0" encoding="utf-8"?><odds issueNum="2026147">
+<i>1,5560001,17841227,0.88,0.25,0.96</i><i>3,5560001,17837514,0.80,0.25,1.08</i></odds>'''
+TOTALS_XML = '''<?xml version="1.0" encoding="utf-8"?><odds issueNum="2026147">
+<i>1,5560001,20660533,0.81,2.5,0.99</i></odds>'''
+H2H_XML = '''<?xml version="1.0" encoding="utf-8"?><odds issueNum="2026147">
+<i>1,5560001,22963914,2.11,3.80,2.58,2.11,3.85,2.55</i></odds>'''
+CHANGE_HTML = '''<TABLE><TR><TD>近5次变化记录</TD></TR>
+<TR><TD>主队</TD><TD>盘口</TD><TD>客队</TD><TD>变化时间</TD></TR>
+<TR><TD>0.88</TD><TD>平手/半球</TD><TD>0.96</TD><TD>10-19 17:56初</TD></TR></TABLE>'''
+
+
+def test_odds_page_failure_falls_back_to_the_cp_feeds(monkeypatch, tmp_path):
+    local = datetime.now(ZoneInfo("Asia/Shanghai")) + timedelta(hours=2)
+    day = local.strftime("%Y-%m-%d")
+    kickoff = local.strftime("%Y-%m-%d %H:%M")
+    cp = f'''<div>{local.year}年{local.month:02d}月{local.day:02d}日</div><table>
+    <tr matchid="5560001" gamename="日职"><td>001</td><td>日职</td><td title="开赛时间：{kickoff}">{local:%H:%M}</td>
+    <td><a id="HomeTeam_1">东京FC</a></td><td>0-0</td><td><a id="GuestTeam_1">柏太阳神</a></td><td></td><td></td>
+    <td><a href="//live.nowscore.com/odds/match/3000494.htm">亚</a></td></tr></table>'''
+    requested = []
+
+    def fake_read(path, url, session):
+        requested.append(url)
+        if url == "https://cp.nowscore.com/":
+            return cp.encode("utf-8")
+        if "/odds/match/" in url:
+            raise worker.requests.RequestException("odds page unavailable")
+        if "yp101.xml" in url:
+            return ASIAN_XML.encode("utf-8")
+        if "dx101.xml" in url:
+            return TOTALS_XML.encode("utf-8")
+        if "op101.xml" in url:
+            return H2H_XML.encode("utf-8")
+        if "odds.aspx" in url:
+            return CHANGE_HTML.encode("utf-8")
+        raise AssertionError(f"unexpected url: {url}")
+
+    monkeypatch.setattr(worker, "_read_html", fake_read)
+    scan = {"sales_day": day, "fixtures": [
+        {"match_id": f"{day}|001", "match_number": "001", "home_team": "东京FC", "away_team": "柏太阳神",
+         "kickoff": local.isoformat(), "sale_status": "on_sale"},
+    ]}
+    result = worker.capture(scan, tmp_path / "output", change_bookmakers=("1",))
+    assert result["status"] == "complete"
+    assert result["failures"] == []
+    assert result["page_failures"][0]["reason"] == "RequestException"
+    assert result["fallback_match_count"] == 1
+    assert result["captured_match_count"] == 1
+    assert result["research_eligible_rows"] == 2
+    assert result["cp_feed_row_counts"] == {"asian": 2, "totals": 1, "h2h": 2}
+    assert result["price_change_rows"] == 1
+    assert result["price_change_requests"] == 1
+    assert not result["change_failures"]
+    snapshot = Path(result["snapshot_dir"])
+    with (snapshot / "price_changes.csv").open(encoding="utf-8-sig", newline="") as stream:
+        changes = list(csv.DictReader(stream))
+    assert [row["bookmaker_id"] for row in changes] == ["1"]
+    assert changes[0]["handicap"] == "-0.25"
+    assert changes[0]["is_opening"] == "True"
+    assert changes[0]["match_id"] == f"{day}|001"
+    assert (snapshot / "raw" / "cp_asian.xml").exists()
+    assert "https://cp.nowscore.com/data/yp101.xml?x=1" in requested
+
+
+def test_page_failure_without_cp_feed_coverage_is_still_a_failure(monkeypatch, tmp_path):
+    local = datetime.now(ZoneInfo("Asia/Shanghai")) + timedelta(hours=2)
+    day = local.strftime("%Y-%m-%d")
+    kickoff = local.strftime("%Y-%m-%d %H:%M")
+    cp = f'''<div>{local.year}年{local.month:02d}月{local.day:02d}日</div><table>
+    <tr matchid="5560009" gamename="日职"><td>001</td><td>日职</td><td title="开赛时间：{kickoff}">{local:%H:%M}</td>
+    <td><a id="HomeTeam_1">东京FC</a></td><td>0-0</td><td><a id="GuestTeam_1">柏太阳神</a></td><td></td><td></td>
+    <td><a href="//live.nowscore.com/odds/match/3000494.htm">亚</a></td></tr></table>'''
+
+    def fake_read(path, url, session):
+        if url == "https://cp.nowscore.com/":
+            return cp.encode("utf-8")
+        if "/odds/match/" in url:
+            raise worker.requests.RequestException("odds page unavailable")
+        if "yp101.xml" in url:
+            return ASIAN_XML.encode("utf-8")
+        return b"<odds></odds>"
+
+    monkeypatch.setattr(worker, "_read_html", fake_read)
+    scan = {"sales_day": day, "fixtures": [
+        {"match_id": f"{day}|001", "match_number": "001", "home_team": "东京FC", "away_team": "柏太阳神",
+         "kickoff": local.isoformat(), "sale_status": "on_sale"},
+    ]}
+    result = worker.capture(scan, tmp_path / "output")
+    assert result["status"] == "partial"
+    assert result["fallback_match_count"] == 0
+    assert result["failures"][0]["reason"] == "RequestException"

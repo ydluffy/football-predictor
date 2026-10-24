@@ -17,10 +17,17 @@ from data.competition_registry import load_team_alias_registry, normalize_alias
 SHANGHAI = ZoneInfo("Asia/Shanghai")
 MATCH_URL = re.compile(r"/odds/match/(\d+)\.htm", re.I)
 SALES_DAY_TEXT = re.compile(r"(20\d{2})年(\d{1,2})月(\d{1,2})日")
+XML_RECORD = re.compile(r"<i>(.*?)</i>", re.S | re.I)
 LINE_PARTS = {"平手": 0.0, "平/半": 0.25, "半球": 0.5, "半/一": 0.75,
               "一球": 1.0, "一/球半": 1.25, "球半": 1.5, "球半/两": 1.75,
               "两球": 2.0, "两/两半": 2.25, "两半": 2.5, "两半/三": 2.75,
               "三球": 3.0}
+# cp.nowscore.com 的盘口接口与变盘历史表使用长写盘口（"平手/半球"），与页面短写（"平/半"）不同。
+LONG_LINE_PARTS = {"平手": 0.0, "平手/半球": 0.25, "半球": 0.5, "半球/一球": 0.75,
+                   "一球": 1.0, "一球/球半": 1.25, "球半": 1.5, "球半/两球": 1.75,
+                   "两球": 2.0, "两球/两球半": 2.25, "两球半": 2.5, "两球半/三球": 2.75,
+                   "三球": 3.0, "三球/三球半": 3.25, "三球半": 3.5}
+CHANGE_HEADER_CELLS = {"主队", "客队", "大球", "小球", "盘口", "变化时间"}
 
 
 def _text(node) -> str:
@@ -112,6 +119,7 @@ def align_cp_to_scan(cp_rows: list[dict], fixtures: list[dict], sales_day: str) 
         elif len(candidates) > 1:
             status, reason = "ambiguous", "duplicate_number_no_verified_candidate"
         aligned.append({**fixture, "nowscore_match_id": chosen["nowscore_match_id"] if chosen else "",
+                        "nowscore_cp_match_id": chosen["cp_match_id"] if chosen else "",
                         "nowscore_odds_url": chosen["odds_url"] if chosen else "",
                         "nowscore_home_team": chosen["home_team"] if chosen else "",
                         "nowscore_away_team": chosen["away_team"] if chosen else "",
@@ -176,6 +184,105 @@ def parse_odds_page(html: str, match_id: str) -> list[dict]:
                          "under_odds": _hong_kong_to_decimal(values[offset + 2]),
                          "price_format": "hong_kong_water_to_decimal"})
     return rows
+
+
+def _xml_records(text: str) -> list[list[str]]:
+    """Split the `<i>a,b,c</i>` records used by the cp.nowscore.com feeds."""
+    return [record.split(",") for record in XML_RECORD.findall(text)]
+
+
+def _xml_quote(record: list[str], market: str, stage: str, fields: dict) -> dict:
+    return {"cp_match_id": record[1], "bookmaker_id": record[0], "bookmaker_name": f"company_{record[0]}",
+            "odds_id": record[2], "market": market, "stage": stage, **fields}
+
+
+def parse_asian_xml(text: str) -> dict[str, list[dict]]:
+    """Parse /data/yp101.xml：`公司ID,竞彩场次ID,oddsId,主水,盘口,客水`.
+
+    水位为香港水位，盘口为正数表示主队让球，与页面 ``asian_line`` 的负号约定相反。
+    """
+    grouped: dict[str, list[dict]] = {}
+    for record in _xml_records(text):
+        if len(record) < 6:
+            continue
+        line = _float(record[4])
+        quote = _xml_quote(record, "asian_handicap", "current", {
+            "home_handicap_raw": record[4], "home_handicap": -line if line is not None else None,
+            "home_price_raw": record[3], "away_price_raw": record[5],
+            "home_odds": _hong_kong_to_decimal(record[3]), "away_odds": _hong_kong_to_decimal(record[5]),
+            "price_format": "hong_kong_water_to_decimal"})
+        grouped.setdefault(record[1], []).append(quote)
+    return grouped
+
+
+def parse_totals_xml(text: str) -> dict[str, list[dict]]:
+    """Parse /data/dx101.xml：`公司ID,竞彩场次ID,oddsId,大球水,盘口,小球水`."""
+    grouped: dict[str, list[dict]] = {}
+    for record in _xml_records(text):
+        if len(record) < 6:
+            continue
+        quote = _xml_quote(record, "totals", "current", {
+            "total_line_raw": record[4], "over_price_raw": record[3], "under_price_raw": record[5],
+            "over_odds": _hong_kong_to_decimal(record[3]), "under_odds": _hong_kong_to_decimal(record[5]),
+            "price_format": "hong_kong_water_to_decimal"})
+        grouped.setdefault(record[1], []).append(quote)
+    return grouped
+
+
+def parse_h2h_xml(text: str) -> dict[str, list[dict]]:
+    """Parse /data/op101.xml：`公司ID,竞彩场次ID,oddsId,初主,初和,初客,终主,终和,终客`.
+
+    ``公司ID=0`` 为跨机构平均值行，保留但不参与公司维度统计。
+    """
+    grouped: dict[str, list[dict]] = {}
+    for record in _xml_records(text):
+        if len(record) < 9:
+            continue
+        for stage, offset in (("opening", 3), ("current", 6)):
+            quote = _xml_quote(record, "h2h", stage, {
+                "home_odds": _float(record[offset]), "draw_odds": _float(record[offset + 1]),
+                "away_odds": _float(record[offset + 2]), "price_format": "decimal"})
+            grouped.setdefault(record[1], []).append(quote)
+    return grouped
+
+
+def long_asian_line(value: str) -> float | None:
+    """Resolve the long-form handicap used by cp.nowscore.com ("平手/半球") to a signed line."""
+    clean = value.strip()
+    away_favored = "受" in clean
+    clean = clean.replace("受让", "").replace("受", "")
+    if clean not in LONG_LINE_PARTS:
+        return None
+    return LONG_LINE_PARTS[clean] if away_favored else -LONG_LINE_PARTS[clean]
+
+
+def parse_change_table(html: str) -> list[dict]:
+    """Parse /handle/odds.aspx?cmd=*change 的“近5次变化记录”表（主队|盘口|客队|变化时间）。"""
+    soup = BeautifulSoup(html, "html.parser")
+    rows = []
+    for tr in soup.find_all("tr"):
+        cells = tr.find_all("td")
+        if len(cells) != 4:
+            continue
+        values = [_text(cell) for cell in cells]
+        if values[0] in CHANGE_HEADER_CELLS or values[1] in CHANGE_HEADER_CELLS:
+            continue
+        rows.append({"home_price_raw": values[0], "handicap_raw": values[1], "away_price_raw": values[2],
+                     "changed_at_raw": values[3], "home_odds": _hong_kong_to_decimal(values[0]),
+                     "away_odds": _hong_kong_to_decimal(values[2]), "handicap": long_asian_line(values[1]),
+                     "is_opening": "初" in values[3]})
+    return rows
+
+
+def xml_quotes(feeds: dict[str, dict[str, list[dict]]], cp_match_id: str, nowscore_match_id: str) -> list[dict]:
+    """Collect every feed quote for one 竞彩场次，keyed by the cp feed's 竞彩场次ID."""
+    if not cp_match_id:
+        return []
+    quotes = []
+    for feed in ("asian", "h2h", "totals"):
+        quotes.extend({**quote, "nowscore_match_id": nowscore_match_id}
+                      for quote in feeds.get(feed, {}).get(cp_match_id, []))
+    return quotes
 
 
 def to_outer_rows(quotes: list[dict], fixture: dict, captured_at: datetime, raw_sha256: str, raw_path: str,

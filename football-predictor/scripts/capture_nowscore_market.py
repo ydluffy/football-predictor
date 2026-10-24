@@ -17,7 +17,25 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from data.api_football_odds_snapshot import SNAPSHOT_COLUMNS  # noqa: E402
-from data.nowscore_market import align_cp_to_scan, parse_cp_page, parse_odds_page, to_outer_rows  # noqa: E402
+from data.nowscore_market import (  # noqa: E402
+    align_cp_to_scan,
+    parse_asian_xml,
+    parse_change_table,
+    parse_cp_page,
+    parse_h2h_xml,
+    parse_odds_page,
+    parse_totals_xml,
+    to_outer_rows,
+    xml_quotes,
+)
+
+
+# cp.nowscore.com 的稳定接口：页面渲染路径失败时的兜底数据源，以及变盘历史（页面 HTML 不含 oddsId）。
+CP_FEEDS = (("asian", "https://cp.nowscore.com/data/yp101.xml?x=1", parse_asian_xml),
+            ("totals", "https://cp.nowscore.com/data/dx101.xml?x=1", parse_totals_xml),
+            ("h2h", "https://cp.nowscore.com/data/op101.xml?x=1", parse_h2h_xml))
+CHANGE_URL = "https://cp.nowscore.com/handle/odds.aspx?cmd=ypchange&oddsID={odds_id}&turn=1"
+DEFAULT_CHANGE_BOOKMAKERS = ("1", "3", "8")
 
 
 def _read_html(path: Path | None, url: str, session: requests.Session) -> bytes:
@@ -49,7 +67,8 @@ def _csv(path: Path, rows: list[dict], columns: list[str] | None = None) -> None
 
 def capture(scan: Path | dict[str, Any], output_root: Path, cp_html: Path | None = None,
             odds_html_dir: Path | None = None, max_matches: int = 100,
-            max_duration_seconds: int = 90) -> dict:
+            max_duration_seconds: int = 90, change_bookmakers: tuple[str, ...] = DEFAULT_CHANGE_BOOKMAKERS,
+            max_change_requests: int = 60) -> dict:
     source = scan if isinstance(scan, dict) else json.loads(scan.read_text(encoding="utf-8-sig"))
     sales_day = str(source["sales_day"])
     started = time.monotonic()
@@ -75,7 +94,22 @@ def capture(scan: Path | dict[str, Any], output_root: Path, cp_html: Path | None
          and datetime.fromisoformat(str(item["kickoff"])) > datetime.now(timezone.utc)),
         key=lambda item: item["kickoff"],
     )[:max_matches]
-    quotes, outer, failures = [], [], []
+
+    # 页面链路完全不变；cp 接口只做两件事：抓取失败场次的兜底，以及提供变盘历史所需的 oddsId。
+    feeds: dict[str, dict[str, list[dict]]] = {}
+    feed_digests: dict[str, str] = {}
+    feed_errors: list[dict] = []
+    if odds_html_dir is None:
+        for feed, url, parser in CP_FEEDS:
+            try:
+                content = _read_html(None, url, session)
+                feed_digests[feed] = _archive(snapshot / "raw" / f"cp_{feed}.xml", content)
+                feeds[feed] = parser(content.decode("utf-8-sig", errors="replace"))
+            except (OSError, requests.RequestException, ValueError) as exc:
+                feed_errors.append({"feed": feed, "reason": type(exc).__name__, "detail": str(exc)[:180]})
+
+    quotes, outer, failures, page_failures = [], [], [], []
+    fallback_matches: set[str] = set()
     for item in mapped:
         if time.monotonic() - started >= max_duration_seconds:
             failures.append({"match_id": item["match_id"], "reason": "time_budget_exceeded"})
@@ -95,21 +129,71 @@ def capture(scan: Path | dict[str, Any], output_root: Path, cp_html: Path | None
             outer.extend(to_outer_rows(parsed, item, quote_captured_at, digest, str(raw_path.resolve()),
                                        source_time_verified=local is None))
         except (OSError, requests.RequestException, ValueError) as exc:
-            failures.append({"match_id": item["match_id"], "nowscore_match_id": match_id,
-                             "reason": type(exc).__name__, "detail": str(exc)[:180]})
+            page_failures.append({"match_id": item["match_id"], "nowscore_match_id": match_id,
+                                  "reason": type(exc).__name__, "detail": str(exc)[:180]})
+            recovered = xml_quotes(feeds, str(item.get("nowscore_cp_match_id") or ""), match_id)
+            if not recovered:
+                failures.append(page_failures[-1])
+                continue
+            quote_captured_at = datetime.now(timezone.utc)
+            digest = feed_digests.get("asian", "")
+            raw_path = snapshot / "raw" / "cp_asian.xml"
+            quotes.extend([{**quote, "match_id": item["match_id"], "captured_at": quote_captured_at.isoformat(),
+                            "raw_sha256": digest} for quote in recovered])
+            outer.extend(to_outer_rows(recovered, item, quote_captured_at, digest, str(raw_path.resolve())))
+            fallback_matches.add(item["match_id"])
+
+    price_changes, change_failures = [], []
+    change_budget = {"requests": 0}
+    wanted = {company for company in change_bookmakers if company}
+    for item in mapped:
+        cp_match_id = str(item.get("nowscore_cp_match_id") or "")
+        for quote in feeds.get("asian", {}).get(cp_match_id, []):
+            if quote["bookmaker_id"] not in wanted or not quote.get("odds_id"):
+                continue
+            if change_budget["requests"] >= max_change_requests or time.monotonic() - started >= max_duration_seconds:
+                break
+            change_budget["requests"] += 1
+            url = CHANGE_URL.format(odds_id=quote["odds_id"])
+            try:
+                raw = _read_html(None, url, session)
+                parsed = parse_change_table(raw.decode("utf-8-sig", errors="replace"))
+            except (OSError, requests.RequestException, ValueError) as exc:
+                change_failures.append({"match_id": item["match_id"], "odds_id": quote["odds_id"],
+                                        "reason": type(exc).__name__, "detail": str(exc)[:180]})
+                continue
+            digest = hashlib.sha256(raw).hexdigest()
+            price_changes.extend({**row, "match_id": item["match_id"], "nowscore_match_id": item["nowscore_match_id"],
+                                  "cp_match_id": cp_match_id, "bookmaker_id": quote["bookmaker_id"],
+                                  "odds_id": quote["odds_id"], "sequence": index,
+                                  "captured_at": datetime.now(timezone.utc).isoformat(),
+                                  "raw_sha256": digest, "source_url": url,
+                                  "home_team": item.get("home_team", ""), "away_team": item.get("away_team", ""),
+                                  "kickoff_at": item["kickoff"]}
+                                 for index, row in enumerate(parsed, start=1))
+        if change_budget["requests"] >= max_change_requests or time.monotonic() - started >= max_duration_seconds:
+            break
     _csv(snapshot / "alignment.csv", aligned)
     _csv(snapshot / "quotes.csv", quotes)
     _csv(snapshot / "outer_market.csv", outer, SNAPSHOT_COLUMNS)
+    _csv(snapshot / "price_changes.csv", price_changes)
+    covered = {row["match_id"] for row in quotes}
     audit = {"source": "nowscore", "sales_day": sales_day, "captured_at": captured.isoformat(),
              "snapshot_dir": str(snapshot.resolve()), "scan_path": str(scan.resolve()) if isinstance(scan, Path) else "inline_scan",
              "scan_fixture_count": len(source.get("fixtures", [])), "cp_fixture_count": len(cp_rows),
              "cp_sales_days": cp_days, "selected_sales_day": sales_day,
              "eligible_on_sale_matches": len(mapped),
              "mapped_count": sum(x["mapping_status"] == "mapped" for x in aligned),
-             "captured_match_count": len({x["match_id"] for x in quotes}),
+             "captured_match_count": len(covered),
              "quote_rows": len(quotes), "asian_outer_rows": len(outer),
              "research_eligible_rows": sum(bool(x["eligible_for_research"]) for x in outer),
-             "failures": failures, "status": "complete" if not failures and len({x["match_id"] for x in quotes}) == len(mapped) else ("no_eligible_fixtures" if not mapped else "partial")}
+             "cp_feed_row_counts": {feed: sum(len(rows) for rows in grouped.values()) for feed, grouped in feeds.items()},
+             "cp_feed_errors": feed_errors,
+             "page_failures": page_failures, "fallback_match_count": len(fallback_matches),
+             "price_change_rows": len(price_changes),
+             "price_change_match_count": len({row["match_id"] for row in price_changes}),
+             "price_change_requests": change_budget["requests"], "change_failures": change_failures,
+             "failures": failures, "status": "complete" if not failures and covered == {x["match_id"] for x in mapped} else ("no_eligible_fixtures" if not mapped else "partial")}
     (snapshot / "audit.json").write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
     return audit
 
@@ -166,10 +250,15 @@ def main() -> None:
     parser.add_argument("--cp-html", type=Path, help="Use a saved HTML page instead of network")
     parser.add_argument("--odds-html-dir", type=Path, help="Directory of <nowscore_match_id>.html files")
     parser.add_argument("--max-matches", type=int, default=100)
+    parser.add_argument("--change-bookmakers", default=",".join(DEFAULT_CHANGE_BOOKMAKERS),
+                        help="Comma-separated Nowscore company ids for price-change history; empty disables it")
+    parser.add_argument("--max-change-requests", type=int, default=60)
     args = parser.parse_args()
     if args.max_matches < 1:
         parser.error("--max-matches must be positive")
-    result = capture(args.scan_json, args.output_root, args.cp_html, args.odds_html_dir, args.max_matches)
+    result = capture(args.scan_json, args.output_root, args.cp_html, args.odds_html_dir, args.max_matches,
+                     change_bookmakers=tuple(part.strip() for part in args.change_bookmakers.split(",") if part.strip()),
+                     max_change_requests=args.max_change_requests)
     print(json.dumps(result, ensure_ascii=False, indent=2))
 
 

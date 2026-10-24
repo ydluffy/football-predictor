@@ -252,6 +252,8 @@ def capture_sporttery_the_odds_snapshot(
     # requests so a nearly exhausted monthly allowance does not generate one
     # guaranteed 401 for every routed competition.  Custom fetchers used by
     # tests/offline imports intentionally bypass this live preflight.
+    # An unverifiable allowance (probe failed, or headers absent) blocks too: the point of
+    # the preflight is to never spend credits on requests we cannot price first.
     if client.configured and selected_keys and fetcher is fetch_odds:
         quota_preflight["performed"] = True
         try:
@@ -263,10 +265,14 @@ def capture_sporttery_the_odds_snapshot(
                 int(remaining_header) if remaining_header.isdigit() else None
             )
             remaining = quota_preflight["requests_remaining"]
-            if remaining is not None and remaining < estimated_credit_cost:
+            if remaining is None:
+                quota_preflight["blocked"] = True
+                quota_preflight["reason"] = "remaining_quota_unverified"
+            elif remaining < estimated_credit_cost:
                 quota_preflight["blocked"] = True
                 quota_preflight["reason"] = "remaining_quota_below_estimated_route_cost"
         except Exception as exc:
+            quota_preflight["blocked"] = True
             quota_preflight["reason"] = f"quota_probe_failed:{type(exc).__name__}"
 
     if client.configured and not quota_preflight["blocked"]:

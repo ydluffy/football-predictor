@@ -5,6 +5,8 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from data.competition_registry import CJK_PATTERN, TeamAliasRegistry, load_team_alias_registry
+
 
 OUTPUT_COLUMNS = [
     "match_id",
@@ -42,6 +44,19 @@ def _two_way_no_vig(home_odds: pd.Series, away_odds: pd.Series) -> pd.Series:
     home_inverse = 1.0 / home.where(home > 1.0)
     away_inverse = 1.0 / away.where(away > 1.0)
     return home_inverse / (home_inverse + away_inverse)
+
+
+def _localized_team_name(value: object, registry: TeamAliasRegistry) -> str:
+    """Prefer the alias table's Chinese name for teams that arrive in English.
+
+    Upstream snapshots disagree on naming: API-Football rows carry English names while the
+    fixtures feed stores Chinese ones, and the server matches market rows on 主客队名.
+    Names that already contain Chinese are left untouched so existing rows keep their form.
+    """
+    text = str(value or "").strip()
+    if CJK_PATTERN.search(text):
+        return text
+    return registry.chinese_alias(text) or text
 
 
 def build_api_football_handicap_movement(
@@ -87,6 +102,10 @@ def build_api_football_handicap_movement(
     frame = frame[frame["home_handicap_numeric"].notna() & frame["home_price_probability"].notna()]
     if frame.empty:
         return pd.DataFrame(columns=OUTPUT_COLUMNS)
+
+    registry = load_team_alias_registry()
+    frame["home_team"] = frame["home_team"].map(lambda value: _localized_team_name(value, registry))
+    frame["away_team"] = frame["away_team"].map(lambda value: _localized_team_name(value, registry))
 
     snapshots = (
         frame.groupby(["match_id", "snapshot_id"], sort=False)

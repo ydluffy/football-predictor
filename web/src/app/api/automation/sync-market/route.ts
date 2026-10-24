@@ -1,13 +1,17 @@
+import { createHash } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireSupabaseAdmin } from "@/lib/requireSupabaseAdmin";
 import { verifiedArtifactUpsert } from "@/lib/verifiedArtifactUpsert";
 import { isSameMarketFixture, type MatchableFixture } from "@/lib/marketIntelMatch";
 
-// 市场信号同步入口：把本地 movement / alignment 最新特征行写入 fixture_market_intel。
+// 市场信号同步入口：
+// - movement / alignment 最新特征行写入 fixture_market_intel（每场一行）；
+// - 变盘历史写入 odds_price_changes（每个 oddsID 一条事件流，按事件本身去重）。
 // 行按主客队名 + 北京时间开赛日期匹配到该销售日的 fixtures；匹配不上的行只计数，不报错。
 
 type MovementInputRow = Record<string, unknown>;
 type AlignmentInputRow = Record<string, unknown>;
+type PriceChangeInputRow = Record<string, unknown>;
 
 type FixtureDbRow = MatchableFixture & {
   sporttery_match_number?: string | null;
@@ -126,6 +130,18 @@ function buildAlignmentPayload(entry: AlignmentAggregate) {
   };
 }
 
+// 变盘记录每次抓取都会被重放，用原始字段生成稳定的事件指纹做去重键。
+function priceChangeKey(row: PriceChangeInputRow) {
+  const material = [
+    text(row.odds_id),
+    text(row.changed_at_raw),
+    text(row.handicap_raw),
+    text(row.home_price_raw),
+    text(row.away_price_raw),
+  ].join("|");
+  return createHash("sha1").update(material).digest("hex").slice(0, 24);
+}
+
 export async function POST(req: Request) {
   try {
     const { sb, response } = requireSupabaseAdmin(req);
@@ -135,6 +151,7 @@ export async function POST(req: Request) {
       sales_day?: string;
       movement_rows?: MovementInputRow[];
       alignment_rows?: AlignmentInputRow[];
+      price_change_rows?: PriceChangeInputRow[];
       source_note?: string;
     };
 
@@ -144,12 +161,13 @@ export async function POST(req: Request) {
     }
     const movementRows = Array.isArray(body.movement_rows) ? body.movement_rows : [];
     const alignmentRows = Array.isArray(body.alignment_rows) ? body.alignment_rows : [];
+    const priceChangeRows = Array.isArray(body.price_change_rows) ? body.price_change_rows : [];
 
     // 1) 该销售日的 fixtures（用于行匹配）
     const primaryResp = await sb
       .from("fixtures")
       .select(
-        "fixture_id,utc_date,home_team_name,home_team_name_zh,away_team_name,away_team_name_zh,sporttery_match_number"
+        "fixture_id,utc_date,home_team_name,away_team_name,sporttery_match_number"
       )
       .eq("sporttery_sales_day", salesDay)
       .order("sporttery_match_number", { ascending: true });
@@ -159,7 +177,7 @@ export async function POST(req: Request) {
       const { from, to } = salesDayUtcRange(salesDay);
       const fallbackResp = await sb
         .from("fixtures")
-        .select("fixture_id,utc_date,home_team_name,home_team_name_zh,away_team_name,away_team_name_zh")
+        .select("fixture_id,utc_date,home_team_name,away_team_name")
         .gte("utc_date", from)
         .lt("utc_date", to)
         .order("utc_date", { ascending: true });
@@ -257,6 +275,61 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: upsertResult.error.message, table: "fixture_market_intel" }, { status: 500 });
     }
 
+    // 5) 变盘历史明细（同一 oddsID 多条事件，主键 sales_day + odds_id + change_key）
+    let matchedPriceChange = 0;
+    let unmatchedPriceChange = 0;
+    const priceChangeRecords: Record<string, unknown>[] = [];
+    for (const row of priceChangeRows) {
+      const fixture = fixtureRows.find((item) =>
+        isSameMarketFixture(item, text(row.home_team), text(row.away_team), text(row.kickoff_at)),
+      );
+      if (!fixture) {
+        unmatchedPriceChange += 1;
+        continue;
+      }
+      priceChangeRecords.push({
+        sales_day: salesDay,
+        odds_id: text(row.odds_id),
+        change_key: priceChangeKey(row),
+        fixture_id: fixture.fixture_id,
+        match_id: nullableText(row.match_id),
+        bookmaker_id: nullableText(row.bookmaker_id),
+        sequence: numeric(row.sequence),
+        is_opening: boolish(row.is_opening),
+        handicap: numeric(row.handicap),
+        home_odds: numeric(row.home_odds),
+        away_odds: numeric(row.away_odds),
+        changed_at_raw: nullableText(row.changed_at_raw),
+        captured_at: nullableText(row.captured_at),
+        raw_sha256: nullableText(row.raw_sha256),
+        source_url: nullableText(row.source_url),
+      });
+      matchedPriceChange += 1;
+    }
+
+    let persistedPriceChanges = 0;
+    if (priceChangeRecords.length > 0) {
+      const changeResult = await verifiedArtifactUpsert(
+        sb,
+        "odds_price_changes",
+        priceChangeRecords,
+        "sales_day,odds_id,change_key",
+      );
+      if (changeResult.error) {
+        if (isMissingRelationError(changeResult.error.message)) {
+          return NextResponse.json(
+            { error: "table_missing:odds_price_changes（请先执行 supabase/migrations/add_fixture_market_intel.sql）" },
+            { status: 500 },
+          );
+        }
+        return NextResponse.json(
+          { error: changeResult.error.message, table: "odds_price_changes" },
+          { status: 500 },
+        );
+      }
+      persistedPriceChanges = changeResult.count;
+    }
+
     return NextResponse.json({
       verified: true,
       persisted_market_intel: upsertResult.count,
@@ -267,6 +340,10 @@ export async function POST(req: Request) {
       unmatched_alignment: unmatchedAlignment,
       movement_rows_received: movementRows.length,
       alignment_rows_received: alignmentRows.length,
+      persisted_price_changes: persistedPriceChanges,
+      matched_price_changes: matchedPriceChange,
+      unmatched_price_changes: unmatchedPriceChange,
+      price_change_rows_received: priceChangeRows.length,
     });
   } catch (error) {
     return NextResponse.json({ error: error instanceof Error ? error.message : String(error) }, { status: 500 });
