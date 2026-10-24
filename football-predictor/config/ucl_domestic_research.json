@@ -6,7 +6,7 @@
   "effective_from": "2026-10-21T07:10:57.587366+00:00",
   "model_artifact": "artifacts/eval/ucl_domestic_phase5_20261021/model.json",
   "provider_fixtures": "artifacts/data/ucl_phase5_20261021/CL_2026.json",
-  "provider_captured_at": "2026-10-21T06:54:52.677184+00:00",
+  "provider_captured_at": "2026-10-24T03:54:37.420689+00:00",
   "max_provider_age_hours": 24,
   "candidates": [
     "elo_only",
