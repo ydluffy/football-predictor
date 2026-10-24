@@ -40,11 +40,15 @@
 
 同一个本地总控负责同步，不新增 cron 或独立总控。先完成并落盘生产工作，再执行同步；数据库展示失败不回滚预测、不阻断下一阶段，不修改正式投注台账。
 
-- 11:05确认/迟采确认完成后：`.\.venv\Scripts\python.exe scripts/run_controller_data_sync.py --stage confirm --sales-day YYYY-MM-DD`。
+- 11:05确认/迟采确认完成后：`.\.venv\Scripts\python.exe scripts/sync_if_stale.py --stage confirm --sales-day YYYY-MM-DD`。
 - 每批早期分析、动态终版或晚间兜底完成后：同命令使用 `--stage analysis`，销售日为本批实际销售日。
 - 13:00复盘完成后：同命令使用 `--stage review`，销售日为被复盘日，不是当前自然日。此模式不重写历史赛前预测。
 - 每次更新总控状态和下一次心跳后：同命令使用 `--stage controller --sales-day <当日>`，将最新编排同步到网页。
-- 每次唤醒在处理时间敏感的采集/终版任务之后，运行 `scripts/run_controller_data_sync.py --retry-pending`。紧邻硬锁时优先生产任务，同步延后，不为重试新增高频唤醒。
+- 每次唤醒在处理时间敏感的采集/终版任务之后，按上面阶段对本次唤醒涉及的每个销售日各跑一次同一命令；若还需覆盖不属于本批的遗留日期，再用 `run_controller_data_sync.py --retry-pending` 兜底。紧邻硬锁时优先生产任务，同步延后，不为重试新增高频唤醒。
+
+#### 一天的数据分批采集/分批预测时的同步口径（2026-10-24 登记）
+
+同一天常被拆成多批采集与预测，因此"要不要同步"不能靠记忆，必须由命令自判：批次收尾与唤醒收尾都只跑 `scripts/sync_if_stale.py`，它读取 `artifacts/data/controller_sync/outbox.json`，比对"该销售日的本地产物最新 mtime"与"该阶段各步骤上次验证通过的落库时间"——产物更新过或任一步骤从未成功，才委托 `run_controller_data_sync.py` 发请求；否则只打印 `up_to_date` 且不发任何请求。委托对象按销售日全量重推，本来就幂等，所以每批收尾重跑同一命令即可补齐差额，不需要新增定时任务或增量协议。本地还没有该销售日产物时判为 `no_local_artifact` 并跳过（同步也无数据可发），产物出现后自然会被判为待同步。`--force` 可跳过自判直接同步，只用于人工干预。判不准时宁可多同步一次，绝不漏同步：漏了页面上就永远缺这批数据。
 
 ### 市场信号同步（2026-10-01 登记，2026-10-21 加门禁）
 
@@ -62,7 +66,7 @@ movement 产物的主客队名必须是中文：远端 `fixtures` 存中文名�
 
 历史同步兼容 daily/full 两种复盘JSON；若仅有Markdown报告，也从已结算正式/固定赔率影子台账只读导出结构化摘要和逐票记录，附原CSV哈希。不得重新结算，不把导出时间冒充复盘发生时间，CSV重复票号或结构损坏时保留失败。台账原件不修改，Supabase仅为展示副本。
 
-同步前探活本地 Web（`/api/status`）：已在运行就直接复用且绝不关闭；未就绪时由同步脚本自行用 `node next build`（构建存在且不落后于 `web/src` 时跳过）+ `node next start` 拉起，等待就绪（默认 180 秒，`--web-timeout` 可调），仅在本次由脚本拉起时才在结束回收该实例。`.next` 构建日志写入 `artifacts/data/controller_sync/web_autostart.log`。用 `--no-web-autostart` 可关闭自拉起（远端/CI 场景）。仍需 `ALLOW_LOCAL_ARTIFACTS=true` 且 Supabase 配置存在；凭据从环境变量或 `web/.env.local` 读取，禁止把密码放入命令行或报告。服务不可用或自拉起超时则保留待同步状态，不能声称网页已更新；不自动开放公网端口。每次同步结束把健康度（`at` / 是否成功 / 待补偿数 / 最近失败原因）POST 到 `/api/automation/sync-health`，并入 `automation_controller_state.payload.last_sync` 供总控页只读展示；该上报失败只影响展示，不改变同步结论。
+同步前探活本地写入服务：`/api/status` 必须返回本项目的 `env`/`supabase` 结构（只看状态码会把同端口上别的项目判成"已就绪"，本机 3000 的 IPv4 曾被另一项目的前端占用）。已在运行就直接复用且绝不关闭；未就绪时由同步脚本自行用 `node next dev -p 3100` 拉起，默认地址 `http://127.0.0.1:3100`（`--base-url` 可改），等待就绪（默认 180 秒，`--web-timeout` 可调），仅在本次由脚本拉起时才在结束回收该实例。必须是开发模式：生产模式（`next build` / `next start`）下 `localArtifactsEnabled()` 恒为 false，`/api/automation/*` 会全部 503，读写本地产物的步骤根本无法工作。固定用 3100 而不是 3000，是因为 3000 的 IPv4 常被其它项目占用；开发模式不需要 `next build`，`ALLOW_LOCAL_ARTIFACTS=true` 由 `web/.env.development.local` 提供。若本机已有手工启动的 dev 服务，用 `--base-url` 指向它复用，避免两个实例共用 `web/.next`。启动日志写入 `artifacts/data/controller_sync/web_autostart.log`，远端/CI 场景用 `--no-web-autostart` 关闭自拉起。仍需 Supabase 配置存在；凭据从环境变量或 `web/.env.local` 读取，禁止把密码放入命令行或报告。服务不可用或自拉起超时则保留待同步状态，不能声称网页已更新；不自动开放公网端口。每次同步结束把健康度（`at` / 是否成功 / 待补偿数 / 最近失败原因）POST 到 `/api/automation/sync-health`，并入 `automation_controller_state.payload.last_sync` 供总控页只读展示；该上报失败只影响展示，不改变同步结论。
 
 队列：`artifacts/data/controller_sync/outbox.json`；逐次审计：同目录 `run_*.json`；最新摘要：`latest.json`。每个销售日/步骤唯一，网络请求前持久化，写后独立数据库SELECT核对主键和字段；不允许仅凭HTTP成功判定。重复主键按最新证据去重。每次最多处理6个步骤，每个步骤瞬时最多2次请求，普通失败30分钟后可补偿，401/403延迟一天并提示核验配置。后续唤醒只补未完成步骤；新阶段落盘可以重新触发该日期同步。
 

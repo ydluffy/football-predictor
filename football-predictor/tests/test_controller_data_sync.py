@@ -225,12 +225,11 @@ def test_rebuild_market_needs_a_stage_containing_market(monkeypatch, tmp_path):
 
 
 def test_web_autostart_reuses_a_running_service_without_starting_or_stopping_it():
-    spawn, build = Mock(), Mock()
+    spawn = Mock()
     ready, process, actions = sync.ensure_web_service(
         "http://127.0.0.1:3000", 3000, Path("unused.log"),
-        probe=lambda url: True, build=build, spawn=spawn)
+        probe=lambda url: True, spawn=spawn)
     assert ready and process is None and actions == []
-    build.assert_not_called()
     spawn.assert_not_called()
 
 
@@ -241,11 +240,11 @@ def test_web_autostart_only_reclaims_the_instance_it_started(tmp_path):
     spawned = []
     ready, handle, actions = sync.ensure_web_service(
         "http://127.0.0.1:3107", 3107, tmp_path / "web.log", timeout=5,
-        probe=lambda url: next(probes), build=lambda: True,
+        probe=lambda url: next(probes),
         spawn=lambda port, log: (spawned.append((port, log)), process)[1],
         sleeper=lambda seconds: None)
     assert ready and handle is process
-    assert actions == ["rebuilt_web", "started_web:3107"]
+    assert actions == ["started_web:3107"]
     assert [port for port, _ in spawned] == [3107]
     sync.stop_web_service(process)
     process.terminate.assert_called_once()
@@ -256,11 +255,45 @@ def test_web_autostart_timeout_does_not_claim_success(tmp_path):
     process.poll.return_value = None
     ready, handle, actions = sync.ensure_web_service(
         "http://127.0.0.1:3000", 3000, tmp_path / "web.log", timeout=0,
-        probe=lambda url: False, build=lambda: False, spawn=lambda port, log: process,
+        probe=lambda url: False, spawn=lambda port, log: process,
         sleeper=lambda seconds: None)
     assert not ready and handle is None
     assert actions[-1] == "web_start_timeout"  # 队列保持待同步，不谎报已更新
     process.terminate.assert_called_once()
+
+
+def test_spawn_uses_development_mode_so_local_artifacts_stay_readable(tmp_path):
+    # 生产模式（next start）下 localArtifactsEnabled() 恒为 false，所有写入步骤都会 503。
+    spawned = []
+    sync.spawn_web_service(3100, tmp_path / "web.log",
+                           spawner=lambda command, **kwargs: spawned.append(command) or Mock())
+    assert spawned == [[sync.NODE_BIN, str(sync.NEXT_BIN), "dev", "-p", "3100"]]
+
+
+def probe_session(payload, status=200):
+    from unittest.mock import MagicMock
+    session = MagicMock()
+    session.__enter__.return_value = session
+    session.get.return_value = Mock(ok=200 <= status < 300, status_code=status, json=lambda: payload)
+    return session
+
+
+def test_probe_rejects_a_foreign_service_listening_on_the_same_port(monkeypatch):
+    # 本机 3000 的 IPv4 由别的项目前端占用，它的 404 不能当作"本地 Web 已就绪"。
+    monkeypatch.setattr(sync.requests, "Session",
+                        lambda: probe_session({"detail": "Not Found"}, status=404))
+    assert sync.web_service_ready("http://127.0.0.1:3000") is False
+
+
+def test_probe_rejects_a_200_that_is_not_this_projects_status_endpoint(monkeypatch):
+    monkeypatch.setattr(sync.requests, "Session", lambda: probe_session({"hello": "world"}))
+    assert sync.web_service_ready("http://127.0.0.1:3100") is False
+
+
+def test_probe_accepts_the_real_status_payload(monkeypatch):
+    monkeypatch.setattr(sync.requests, "Session",
+                        lambda: probe_session({"env": {"hasSupabaseUrl": True}, "supabase": {"ok": True}}))
+    assert sync.web_service_ready("http://127.0.0.1:3100") is True
 
 
 def test_health_report_failure_never_changes_the_sync_outcome():

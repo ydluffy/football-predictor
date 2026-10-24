@@ -46,7 +46,9 @@ HEALTH_STEP = "/api/automation/sync-health"
 # 只允许回环；用 node 直起 next 会得到一个单进程服务，结束时能精确回收，不留 npx 子进程。
 NODE_BIN = shutil.which("node") or "node"
 NEXT_BIN = WEB_ROOT / "node_modules/next/dist/bin/next"
-WEB_BUILD_INPUTS = ("src", "package.json", "next.config.ts", "next.config.js", "next.config.mjs", "tsconfig.json")
+# 自拉起必须用独立端口：本机 3000 的 IPv4 常被其它项目占用，而 3000 的 localhost 解析又取决于监听地址。
+WEB_PORT = 3100
+DEFAULT_BASE_URL = f"http://127.0.0.1:{WEB_PORT}"
 
 
 def save_json(path: Path, value: object) -> None:
@@ -74,43 +76,33 @@ def admin_credentials(path: Path) -> dict:
 
 
 def web_service_ready(base_url: str, timeout: float = 2.5) -> bool:
-    """探活本地 Web：只认可访问的 /api/status，任何网络异常都视为未就绪。"""
+    """探活本地 Web：必须确认是本项目的 Next 应用，而不是同端口上的别的服务。
+
+    只看状态码会把别的项目误判成"就绪"（本机 3000 的 IPv4 曾由另一项目的前端占用，
+    其 404 响应满足了 status_code < 500），随后所有同步请求都会打到错误的服务上。
+    /api/status 是本项目专用的环境自检接口，用它同时校验响应形状。
+    """
     try:
         with requests.Session() as probe:
             probe.trust_env = False  # 与同步请求一致：回环不经过环境代理
             response = probe.get(base_url + "/api/status", timeout=timeout, allow_redirects=False)
-        return response.status_code < 500
-    except requests.RequestException:
+        if not response.ok:
+            return False
+        payload = response.json()
+    except (requests.RequestException, ValueError):
         return False
-
-
-def web_build_stale() -> bool:
-    """构建产物缺失或落后于源码时需要重新构建，避免自拉起后长期服务旧代码。"""
-    stamp = WEB_ROOT / ".next" / "BUILD_ID"
-    if not stamp.exists():
-        return True
-    built_at = stamp.stat().st_mtime
-    for name in WEB_BUILD_INPUTS:
-        target = WEB_ROOT / name
-        if target.is_file() and target.stat().st_mtime > built_at:
-            return True
-        if target.is_dir() and any(item.stat().st_mtime > built_at for item in target.rglob("*") if item.is_file()):
-            return True
-    return False
-
-
-def build_web(runner=subprocess.run) -> bool:
-    """已有可用且不落后于源码的构建时直接复用，避免每次同步都重编译。"""
-    if not web_build_stale():
-        return False
-    runner([NODE_BIN, str(NEXT_BIN), "build"], cwd=str(WEB_ROOT), check=True)
-    return True
+    return isinstance(payload, dict) and isinstance(payload.get("env"), dict) and "supabase" in payload
 
 
 def spawn_web_service(port: int, log_path: Path, spawner=subprocess.Popen):
+    """拉起本地写入服务。
+
+    必须是开发模式：生产模式下 localArtifactsEnabled() 恒为 false，/api/automation/* 会全部 503，
+    读写本地产物的步骤（snapshot/history/controller）根本无法工作。
+    """
     log_path.parent.mkdir(parents=True, exist_ok=True)
     with log_path.open("ab") as log:
-        return spawner([NODE_BIN, str(NEXT_BIN), "start", "-p", str(port)], cwd=str(WEB_ROOT),
+        return spawner([NODE_BIN, str(NEXT_BIN), "dev", "-p", str(port)], cwd=str(WEB_ROOT),
                        stdout=log, stderr=subprocess.STDOUT)
 
 
@@ -126,7 +118,7 @@ def stop_web_service(process) -> None:
 
 
 def ensure_web_service(base_url: str, port: int, log_path: Path, timeout: float = 180.0,
-                       probe=web_service_ready, build=build_web, spawn=spawn_web_service,
+                       probe=web_service_ready, spawn=spawn_web_service,
                        sleeper=time.sleep) -> tuple[bool, object | None, list[str]]:
     """服务已在运行就复用（且绝不关闭）；未就绪才自拉起一个由本次同步负责回收的实例。
 
@@ -136,14 +128,9 @@ def ensure_web_service(base_url: str, port: int, log_path: Path, timeout: float 
     if probe(base_url):
         return True, None, actions
     try:
-        if build():
-            actions.append("rebuilt_web")
-    except (OSError, subprocess.CalledProcessError) as error:
-        return False, None, [*actions, f"web_build_failed:{error}"]
-    try:
         process = spawn(port, log_path)
     except OSError as error:
-        return False, None, [*actions, f"web_start_failed:{error}"]
+        return False, None, [f"web_start_failed:{error}"]
     actions.append(f"started_web:{port}")
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
@@ -378,7 +365,7 @@ def main() -> int:
     parser.add_argument("--rebuild-market", action="store_true",
                         help="运行 movement/alignment 构建器刷新 latest 别名后再同步含 market 的阶段")
     parser.add_argument("--max-jobs", type=int, default=6)
-    parser.add_argument("--base-url", default="http://127.0.0.1:3000")
+    parser.add_argument("--base-url", default=DEFAULT_BASE_URL)
     parser.add_argument("--state-dir", type=Path, default=ROOT / "artifacts/data/controller_sync")
     parser.add_argument("--web-autostart", action=argparse.BooleanOptionalAction, default=True,
                         help="本地 Web 未就绪时由同步脚本自行拉起（--no-web-autostart 关闭）")
@@ -394,6 +381,8 @@ def main() -> int:
     parsed = urlparse(args.base_url)
     if parsed.scheme != "http" or parsed.hostname not in {"127.0.0.1", "localhost", "::1"} or parsed.username or parsed.password or parsed.query or parsed.fragment or parsed.path not in {"", "/"}:
         parser.error("only a local loopback Web service is allowed")
+    if args.web_autostart and not parsed.port:
+        parser.error("--base-url must include a port when autostart is enabled")
     for day in args.sales_day:
         try:
             if date.fromisoformat(day).isoformat() != day:
@@ -441,7 +430,7 @@ def main() -> int:
         if args.web_autostart:
             # 页面只读 Supabase：Web 没起来就等于没同步。这里自己把写入服务拉起来，用完整链路代替人工确认。
             web_ready, web_process, web_actions = ensure_web_service(
-                base_url, parsed.port or 80, args.state_dir / "web_autostart.log", args.web_timeout)
+                base_url, parsed.port, args.state_dir / "web_autostart.log", args.web_timeout)
         try:
             session = None
             results: list[dict] = []
