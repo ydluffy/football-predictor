@@ -40,7 +40,7 @@ def main() -> None:
         "last_completed_at": NOW,
         "last_stage_status": "completed_9_match_official_and_nowscore_baseline_no_ledger",
         "last_stage_artifact": REPORT,
-        "inner_outer_alignment_status": "2026-09-27_1506_primary_quota_insufficient_nowscore_mapped9_of9_research_rows125",
+        "inner_outer_alignment_status": "2026-09-27_1506_primary_quota_insufficient_nowscore_mapped9_of9_research_rows125",  # pragma: allowlist secret - non-secret status or character set
         "next_required_stage": "2026-09-27 16:30终版分析001-003",
         "next_required_at": "2026-09-27T16:30:00+08:00",
         "next_dynamic_task_key": "2026-09-27|16:30|001-003终版",

@@ -18,8 +18,8 @@ def main() -> None:
         "last_completed_at": NOW,
         "last_stage_status": "completed_confirm_8_on_sale_nowscore_available",
         "last_stage_artifact": "artifacts/betting/sporttery_sales_window_scan_2026-09-28_1105_confirm.md",
-        "confirm_source_status": "2026-09-28_1105_official_8_on_sale_four_play_fetch_ok_three_dynamic_groups_heartbeat_queue",
-        "inner_outer_alignment_status": "2026-09-28_1107_primary_quota_insufficient_nowscore_mapped8_of8_research_rows109",
+        "confirm_source_status": "2026-09-28_1105_official_8_on_sale_four_play_fetch_ok_three_dynamic_groups_heartbeat_queue",  # pragma: allowlist secret - non-secret status or character set
+        "inner_outer_alignment_status": "2026-09-28_1107_primary_quota_insufficient_nowscore_mapped8_of8_research_rows109",  # pragma: allowlist secret - non-secret status or character set
         "next_dynamic_task_key": "2026-09-28|18:25-19:00|终版分析",
         "next_dynamic_task_at": "2026-09-28T16:55:00+08:00",
         "next_required_stage": "2026-09-28 13:00复盘2026-09-27；16:55终版001-002",

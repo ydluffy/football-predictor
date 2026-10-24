@@ -117,7 +117,7 @@ def main() -> None:
         "next_required_stage": "2026-09-26 10:00开售前预扫描",
         "next_required_at": "2026-09-26T10:00:00+08:00",
         "next_dynamic_task_key": None, "next_dynamic_task_at": None,
-        "inner_outer_alignment_status": "2026-09-25_2117_primary_quota_insufficient_nowscore_mapped8_of8_research_rows109",
+        "inner_outer_alignment_status": "2026-09-25_2117_primary_quota_insufficient_nowscore_mapped8_of8_research_rows109",  # pragma: allowlist secret - non-secret status or character set
     })
     state["final_20260925_006_013"] = {
         "status": "completed", "completed_at": NOW, "scope": "006-013",

@@ -88,7 +88,7 @@ def test_credentials_loaded_without_optional_dependencies(tmp_path, monkeypatch)
     path.write_text('WORKBENCH_ADMIN_USER="local"\nWORKBENCH_ADMIN_PASSWORD=\'p#q\'\nSUPABASE_SERVICE_ROLE_KEY=excluded\n', encoding="utf-8")
     monkeypatch.setenv("WORKBENCH_ADMIN_USER", "override")
     monkeypatch.delenv("WORKBENCH_ADMIN_PASSWORD", raising=False)
-    assert sync.admin_credentials(path) == {"WORKBENCH_ADMIN_USER": "override", "WORKBENCH_ADMIN_PASSWORD": "p#q"}
+    assert sync.admin_credentials(path) == {"WORKBENCH_ADMIN_USER": "override", "WORKBENCH_ADMIN_PASSWORD": "p#q"}  # pragma: allowlist secret - test fixture
 
 
 def test_frozen_ledger_export_does_not_mutate_or_recalculate(tmp_path):

@@ -123,7 +123,7 @@ def main() -> None:
         return
     if not args.market_csv or not args.gate_json or not args.batch_id or not args.sales_day:
         parser.error("freeze requires --market-csv --gate-json --batch-id --sales-day")
-    if any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in args.batch_id):
+    if any(char not in "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789_-" for char in args.batch_id):  # pragma: allowlist secret - non-secret status or character set
         raise ValueError("batch id must contain letters, digits, underscores or hyphens")
     config = json.loads((ROOT / "config/october_research.json").read_text(encoding="utf-8"))
     gate = json.loads(args.gate_json.read_text(encoding="utf-8"))

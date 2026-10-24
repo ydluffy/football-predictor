@@ -17,7 +17,7 @@ def main() -> None:
         "last_completed_at": "2026-09-27T11:12:00+08:00",
         "last_stage_status": "completed_confirm_9_on_sale_2_stopped_the_odds_quota1_nowscore_mapped9_no_ledger_write",
         "last_stage_artifact": "artifacts/betting/sporttery_sales_window_scan_2026-09-27_1106_confirm.md",
-        "confirm_source_status": "2026-09-27_1106_official_9_on_sale_2_stopped_four_play_fetch_ok_five_dynamic_groups_heartbeat_queue",
+        "confirm_source_status": "2026-09-27_1106_official_9_on_sale_2_stopped_four_play_fetch_ok_five_dynamic_groups_heartbeat_queue",  # pragma: allowlist secret - non-secret status or character set
         "inner_outer_alignment_status": "2026-09-27_1108_primary_quota_insufficient_remaining1_nowscore_complete_mapped9_of9_research_rows124_production_feature_not_ready",
         "next_dynamic_task_key": "2026-09-27|18:00|终版分析",
         "next_dynamic_task_at": "2026-09-27T16:30:00+08:00",

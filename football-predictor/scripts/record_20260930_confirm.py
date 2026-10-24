@@ -32,7 +32,7 @@ def main() -> None:
         "last_completed_at": NOW,
         "last_stage_status": "completed_confirm_2_on_sale_nowscore_available_no_ledger_write",
         "last_stage_artifact": REPORT,
-        "confirm_source_status": "2026-09-30_1105_official_2_on_sale_four_play_fetch_ok_two_dynamic_groups_heartbeat_queue",
+        "confirm_source_status": "2026-09-30_1105_official_2_on_sale_four_play_fetch_ok_two_dynamic_groups_heartbeat_queue",  # pragma: allowlist secret - non-secret status or character set
         "inner_outer_alignment_status": "2026-09-30_1107_primary_no_routed_sports_nowscore_mapped2_of2_research_rows26",
         "next_dynamic_task_key": "2026-09-30|14:00|终版分析",
         "next_dynamic_task_at": "2026-09-30T12:30:00+08:00",

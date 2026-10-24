@@ -1,5 +1,13 @@
 # GitHub 协作流程
 
+## 2026-10-24 CI 安全修复说明
+
+- PR #21 的 Python 首个失败点是密钥扫描：逐行核实后，仅对批次状态文本、字符集合和测试口令添加豁免，不关闭扫描器。
+- 后续审计发现的 certifi、filelock、urllib3、setuptools 漏洞通过定向更新锁文件修复。
+- Web 更新 Next.js 至 16.4.3，并更新 zod、sharp、brace-expansion、source-map-js 等受影响依赖；以实际 npm audit 结果验收，不降低审计阈值。
+- 本次保留原有 eslint-config-next 16.3.3，并显式固定原有 eslint-plugin-react-hooks 7.0.1。新版检查器对现有页面新增了 set-state-in-effect 告警，后续升级需单独处理页面状态生命周期，不能误称已完成新版规则验收。
+- 本地测试使用 Windows Python 3.13；GitHub Ubuntu Python 3.12 的最终结果仍以本次推送后的 CI 为准。
+
 这份文档只解决一件事：如何把当前项目稳定地交给 GitHub 管理，并让你、Trae Work、本地 Codex、Coze 云端电脑上的智能体都按同一套 Git 流程协作。
 
 ## 当前原则

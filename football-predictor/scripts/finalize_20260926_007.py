@@ -90,7 +90,7 @@ def main() -> None:
         "next_required_at": "2026-09-26T19:30:00+08:00",
         "next_dynamic_task_key": "2026-09-26|21:00-22:30|终版分析",
         "next_dynamic_task_at": "2026-09-26T19:30:00+08:00",
-        "inner_outer_alignment_status": "2026-09-26_1707_primary_quota_insufficient_nowscore_batch_mapped1_of1",
+        "inner_outer_alignment_status": "2026-09-26_1707_primary_quota_insufficient_nowscore_batch_mapped1_of1",  # pragma: allowlist secret - non-secret status or character set
     })
     state["final_20260926_007"] = {
         "status": "completed", "completed_at": NOW, "scope": "007",

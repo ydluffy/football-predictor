@@ -33,7 +33,7 @@ def main() -> None:
         "last_stage_status": "completed_confirm_15_on_sale_nowscore_available_no_ledger_write",
         "last_stage_artifact": REPORT,
         "confirm_source_status": "2026-09-29_1105_official_15_on_sale_four_play_fetch_ok_four_dynamic_groups_heartbeat_queue",
-        "inner_outer_alignment_status": "2026-09-29_1108_primary_quota_insufficient_nowscore_mapped15_of15_research_rows192",
+        "inner_outer_alignment_status": "2026-09-29_1108_primary_quota_insufficient_nowscore_mapped15_of15_research_rows192",  # pragma: allowlist secret - non-secret status or character set
         "next_dynamic_task_key": "2026-09-29|14:00|终版分析",
         "next_dynamic_task_at": "2026-09-29T12:30:00+08:00",
         "next_required_stage": "2026-09-29 12:30终版001；13:00复盘2026-09-28",

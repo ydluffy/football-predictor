@@ -121,7 +121,7 @@ def main() -> None:
         "last_completed_at": ANALYSIS_AT,
         "last_stage_status": "completed_001_003_ready_strategy_zero_formal_fixed_shadow_recorded_nowscore_available",
         "last_stage_artifact": REPORT,
-        "inner_outer_alignment_status": "2026-09-27_1609_primary_quota_insufficient_nowscore_mapped3_of3_research_only",
+        "inner_outer_alignment_status": "2026-09-27_1609_primary_quota_insufficient_nowscore_mapped3_of3_research_only",  # pragma: allowlist secret - non-secret status or character set
         "next_dynamic_task_key": "2026-09-27|22:00|004-009终版",
         "next_dynamic_task_at": "2026-09-27T22:00:00+08:00",
         "next_required_stage": "2026-09-27 22:00终版分析004-009",
