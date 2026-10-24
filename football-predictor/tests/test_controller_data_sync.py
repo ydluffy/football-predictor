@@ -43,7 +43,14 @@ def test_connection_failure_is_bounded_and_remains_pending():
     persist.assert_called_once()
 
 
-def test_only_pending_steps_retried_and_success_clears_them(monkeypatch):
+def test_only_pending_steps_retried_and_success_clears_them(monkeypatch, tmp_path):
+    # CI has no production ledgers; exercise the real exporter with isolated inputs.
+    folder = tmp_path / "data/manual"
+    folder.mkdir(parents=True)
+    for name in ("betting_plan_ledger.csv", "fixed_odds_shadow_ledger.csv"):
+        (folder / name).write_text("date,plan_id,result,stake,payout,net_profit,roi,selections\n", encoding="utf-8")
+    export = sync.frozen_review_export
+    monkeypatch.setattr(sync, "frozen_review_export", lambda day: export(day, tmp_path))
     monkeypatch.setattr(sync, "market_artifact_coverage", lambda day: {"newest_day": {}, "stale": []})
     state = {"jobs": {}}
     sync.enqueue(state, ["2026-09-04"], "analysis", NOW)
@@ -53,6 +60,16 @@ def test_only_pending_steps_retried_and_success_clears_them(monkeypatch):
     sync.run_pending(state, session, "http://localhost", NOW, Mock())
     assert session.post.call_count == len(sync.STAGES["analysis"]) - 1
     assert all(j["status"] == "completed" for j in state["jobs"].values())
+
+
+def test_missing_ledgers_block_history_without_network(monkeypatch, tmp_path):
+    export = sync.frozen_review_export
+    monkeypatch.setattr(sync, "frozen_review_export", lambda day: export(day, tmp_path))
+    session = Mock()
+    result = sync.attempt(session, "http://localhost", {"step": "history", "sales_day": "2026-09-04"})
+    assert result["reason"] == "invalid_local_ledger_export"
+    assert result["ok"] is False
+    session.post.assert_not_called()
 
 
 def test_auth_failure_not_retried_immediately():
