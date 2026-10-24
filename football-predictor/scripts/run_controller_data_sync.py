@@ -282,6 +282,14 @@ def rebuild_market_artifacts(runner=subprocess.run) -> list[str]:
     return list(MARKET_ARTIFACT_BUILDERS)
 
 
+def step_timeout(step: str) -> tuple[float, float]:
+    """market 步骤逐行做读回校验，滑点多的销售日单次请求实测可达 ~80s。
+
+    统一用 45s 读超时会让这类大销售日永远停在待同步（数据其实还没写完就被判超时）。
+    """
+    return (3.0, 180.0 if step == "market" else 45.0)
+
+
 def attempt(session, base_url: str, job: dict) -> dict:
     step, day = job["step"], job["sales_day"]
     if step == "snapshot":
@@ -302,7 +310,7 @@ def attempt(session, base_url: str, job: dict) -> dict:
             return {"ok": False, "http_status": None, "reason": "invalid_local_ledger_export", "request_attempts": 0}
     for number in range(2):
         try:
-            response = session.post(base_url + STEPS[step], json=body, timeout=(3, 45), allow_redirects=False)
+            response = session.post(base_url + STEPS[step], json=body, timeout=step_timeout(step), allow_redirects=False)
             try:
                 payload = response.json()
             except ValueError:

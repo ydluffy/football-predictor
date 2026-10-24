@@ -207,6 +207,20 @@ def test_market_rows_matching_no_fixture_are_not_a_success(monkeypatch):
     assert session.post.call_count == 1
 
 
+def test_market_step_gets_a_longer_read_timeout_than_the_others(monkeypatch):
+    # market 逐行读回校验，滑点多的销售日单次请求实测 ~80s；沿用 45s 读超时会让它永远停在待同步。
+    monkeypatch.setattr(sync, "market_artifact_coverage", lambda day: {"newest_day": {}, "stale": []})
+    monkeypatch.setattr(sync, "market_payload", lambda day: {"sales_day": day})
+    payload = Mock(ok=True, status_code=200)
+    payload.json.return_value = {"verified": True, "movement_rows_received": 1, "matched_movement": 1,
+                                 "alignment_rows_received": 0, "matched_alignment": 0}
+    session = Mock()
+    session.post.return_value = payload
+    sync.attempt(session, "http://localhost", {"step": "market", "sales_day": "2026-09-04"})
+    assert session.post.call_args.kwargs["timeout"] == sync.step_timeout("market")
+    assert sync.step_timeout("market")[1] > sync.step_timeout("snapshot")[1]
+
+
 def test_rebuild_market_artifacts_runs_both_builders():
     calls = []
     sync.rebuild_market_artifacts(runner=lambda command, **kwargs: calls.append((command, kwargs)))
