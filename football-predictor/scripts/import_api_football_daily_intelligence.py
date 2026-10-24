@@ -56,12 +56,21 @@ def main() -> None:
     )
     audit["mapping_output"] = str(mapping_output.resolve())
     audit_output = path(args.audit_output); audit_output.parent.mkdir(parents=True, exist_ok=True)
+    review_output = audit_output.with_suffix(".mapping-review.json")
+    review_output.write_text(json.dumps({
+        "observed_at": audit["observed_at"],
+        "coverage_ratio": audit["mapping"]["coverage_ratio"],
+        "review_required": audit["mapping"]["review_required"],
+        "items": audit["mapping"]["review_items"],
+        "recovery": "Verify identities, update registry, then run replay_api_football_intelligence.py with this scan and audit.",
+    }, ensure_ascii=False, indent=2), encoding="utf-8")
+    audit["mapping_review_output"] = str(review_output.resolve())
     audit_output.write_text(json.dumps(audit, ensure_ascii=False, indent=2), encoding="utf-8")
     if path(args.manual_output).resolve() == (ROOT / "data/manual/prematch_intelligence.csv").resolve():
         audit["quality_sidecar"] = audit_after_collection(ROOT, audit_output)
     else:
         audit["quality_sidecar"] = {"status": "skipped", "reason": "non_default_dataset"}
-    print(json.dumps(audit, ensure_ascii=False, indent=2))
+    print(json.dumps(audit, ensure_ascii=True, indent=2))
 
 
 if __name__ == "__main__": main()

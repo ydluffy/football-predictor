@@ -84,3 +84,25 @@ def test_daily_collector_queries_actual_cross_day_kickoff_date(tmp_path):
     )
     assert len(mapping) == 1
     assert audit["fixture_dates"] == ["2026-08-17"]
+
+
+def test_provider_rejection_is_archived_and_cannot_create_zero_load(tmp_path):
+    class PlanRejected(FakeClient):
+        def get(self, endpoint, params):
+            if endpoint == "fixtures" and params.get("date") == "2026-08-13":
+                return {"errors": {"plan": "history unavailable"}, "response": []}
+            return super().get(endpoint, params)
+    scan = pd.DataFrame([{"match_id": "2026-08-16|001", "competition_id": "ENG_PREMIER_LEAGUE",
+                          "kickoff": "2026-08-16T23:00:00+08:00", "home_team": "曼城", "away_team": "阿森纳"}])
+    rows, _, audit = collect_api_football_daily_intelligence(
+        client=PlanRejected(), scan_fixtures=scan, date="2026-08-16",
+        observed_at="2026-08-16T12:00:00Z", raw_root=tmp_path / "raw",
+        include_schedule_load=True, request_interval_seconds=0,
+    )
+    import json
+    from pathlib import Path
+    payloads = [json.loads(Path(p).read_text(encoding="utf-8")) for p in audit["raw_files"]]
+    assert any(isinstance(x.get("errors"), dict) and x["errors"].get("plan") for x in payloads)
+    assert any("errors: plan" in x["error"] for x in audit["failures"])
+    assert not audit["schedule_calendar_complete"]
+    assert not (rows["signal_type"] == "cross_comp_matches_7d").any()

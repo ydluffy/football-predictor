@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
-from data.competition_registry import load_team_alias_registry, normalize_alias
+from data.competition_registry import load_competition_registry, load_team_alias_registry, normalize_alias
 from data.prematch_intelligence import REQUIRED_COLUMNS, normalize_prematch_intelligence
 
 
@@ -51,33 +52,78 @@ def build_api_football_match_mapping(
     api["kickoff_parsed"] = pd.to_datetime(api["kickoff_time"], errors="coerce", utc=True)
     api["home_key"] = api["home_team"].map(_team_key)
     api["away_key"] = api["away_team"].map(_team_key)
+    identities = json.loads((Path(__file__).resolve().parents[2] / "config/api_football_identities.json").read_text(encoding="utf-8"))
+    if identities.get("schema_version") != 1:
+        raise ValueError("Unsupported API identity schema")
+    team_ids = {_team_key(item["canonical"]): str(item["id"]) for item in identities["teams"]}
+    if len(team_ids) != len(identities["teams"]) or len(set(team_ids.values())) != len(team_ids):
+        raise ValueError("Conflicting API team identities")
+    competitions = load_competition_registry()
     rows: list[dict[str, Any]] = []
     unmatched: list[str] = []
     ambiguous: list[str] = []
+    unmatched_diagnostics: list[dict[str, Any]] = []
+    review_items: list[dict[str, Any]] = []
     tolerance = pd.Timedelta(minutes=int(tolerance_minutes))
     for _, local in local_fixtures.iterrows():
         kickoff = pd.to_datetime(local["kickoff"], errors="coerce", utc=True)
         home_key = _team_key(local.get("home_team_canonical", local["home_team"]))
         away_key = _team_key(local.get("away_team_canonical", local["away_team"]))
+        competition_id = str(local["competition_id"])
+        resolved = competitions.resolve(local.get("competition", ""))
+        if competition_id == "UNKNOWN" and resolved is not None:
+            competition_id = resolved.competition_id
         candidates = api[
             api["kickoff_parsed"].notna()
             & api["kickoff_parsed"].sub(kickoff).abs().le(tolerance)
             & api["home_key"].eq(home_key)
             & api["away_key"].eq(away_key)
         ]
+        name_time_count = len(candidates)
+        # A supplied source ID must agree with a reviewed binding. Missing IDs
+        # retain legacy strict-name matching; conflicting IDs never fall back.
+        for side, key in (("home", home_key), ("away", away_key)):
+            column = f"source_{side}_team_id"
+            if key in team_ids and column in candidates:
+                ids = candidates[column].map(lambda value: "" if pd.isna(value) else str(value).removesuffix(".0"))
+                candidates = candidates[ids.eq("") | ids.eq(team_ids[key])]
+        if "league_id" in candidates and competition_id != "UNKNOWN":
+            ids = candidates["league_id"].map(lambda value: "" if pd.isna(value) else str(value).removesuffix(".0"))
+            expected = {key for key, value in identities["competitions"].items() if value == competition_id}
+            if expected:
+                candidates = candidates[ids.eq("") | ids.isin(expected)]
         match_id = str(local["match_id"])
+        context = {"match_id": match_id, "home_team": str(local["home_team"]),
+                   "away_team": str(local["away_team"]), "kickoff": str(local["kickoff"]),
+                   "competition_id": str(local["competition_id"])}
+        if competition_id == "UNKNOWN":
+            review_items.append({**context, "reason": "unknown_competition"})
         if len(candidates) == 0:
             unmatched.append(match_id)
+            pair = api[api["home_key"].eq(home_key) & api["away_key"].eq(away_key)]
+            near = api[api["kickoff_parsed"].notna() & api["kickoff_parsed"].sub(kickoff).abs().le(tolerance)]
+            unmatched_diagnostics.append({
+                "match_id": match_id,
+                "reason": ("source_identity_conflict" if name_time_count else
+                           "team_pair_outside_time_window" if len(pair) else "team_pair_not_found"),
+                "home_alias_known": load_team_alias_registry().resolve(local["home_team"]) is not None,
+                "away_alias_known": load_team_alias_registry().resolve(local["away_team"]) is not None,
+                "team_pair_rows": int(len(pair)),
+                "fixtures_in_time_window": int(len(near)),
+            })
+            review_items.append({**context, **unmatched_diagnostics[-1]})
             continue
         if len(candidates) > 1:
             ambiguous.append(match_id)
+            review_items.append({**context, "reason": "ambiguous_fixture",
+                                 "candidate_ids": candidates["source_fixture_id"].astype(str).tolist()})
             continue
         candidate = candidates.iloc[0]
         rows.append(
             {
                 "source_fixture_id": str(candidate["source_fixture_id"]),
                 "match_id": match_id,
-                "competition_id": str(local["competition_id"]),
+                "competition_id": competition_id,
                 "kickoff_at": kickoff.isoformat(),
                 "home_team": str(local.get("home_team_canonical", local["home_team"])),
                 "away_team": str(local.get("away_team_canonical", local["away_team"])),
@@ -88,8 +134,12 @@ def build_api_football_match_mapping(
         "api_fixture_rows": int(len(api_fixtures)),
         "mapped_rows": int(len(rows)),
         "unmatched_match_ids": unmatched,
+        "unmatched_diagnostics": unmatched_diagnostics,
         "ambiguous_match_ids": ambiguous,
         "tolerance_minutes": int(tolerance_minutes),
+        "coverage_ratio": len(rows) / len(local_fixtures) if len(local_fixtures) else None,
+        "review_required": bool(review_items),
+        "review_items": review_items,
     }
 
 
