@@ -14,7 +14,7 @@ import {
   saveFixtureExplanation,
 } from "@/lib/api";
 import { MatchDetailCard } from "@/components/MatchDetailCard";
-import { EmptyState, MetricCard, PageIntro, SecondaryLink, StatusBadge, SurfaceCard } from "@/components/Workbench";
+import { ActionButton, Chip, EmptyState, PageIntro, SecondaryLink, StatStrip, StatusBadge, SurfaceCard } from "@/components/Workbench";
 
 type ExplainSnapshot = {
   id: string;
@@ -22,6 +22,9 @@ type ExplainSnapshot = {
   mode: "brief" | "detailed";
   content: string;
 };
+
+const LINK_MUTED =
+  "rounded-md border border-zinc-200 px-2.5 py-1 text-xs text-zinc-600 transition hover:bg-zinc-50 hover:text-zinc-900";
 
 function storageKey(fixtureId: number) {
   return `fixture_explain_snapshots:${fixtureId}`;
@@ -76,16 +79,17 @@ function shanghaiDateFromIso(iso?: string | null) {
   }).format(date);
 }
 
+// 与其余页面保持同一口径：只在真正触发信号时返回标签。
 function getMarketSignalTags(intel?: FixtureMarketIntel | null) {
   if (!intel) return [];
-  const tags: Array<{ label: string; tone: "neutral" | "success" | "warning" | "danger" }> = [];
-  if (intel.movement) tags.push({ label: "有盘口变化", tone: "warning" });
+  const tags: Array<{ label: string; tone: "danger" | "warning" | "success" }> = [];
   if (intel.movement?.line_upgrade_without_price_support) tags.push({ label: "升盘背离", tone: "danger" });
-  if (intel.movement?.line_downgrade) tags.push({ label: "存在退盘", tone: "warning" });
-  if (intel.alignment?.time_aligned) tags.push({ label: "时间已对齐", tone: "success" });
+  if (intel.movement?.line_downgrade) tags.push({ label: "退盘", tone: "warning" });
   if (Math.abs(intel.alignment?.sporttery_minus_outer_handicap_median ?? 0) >= 0.5) {
-    tags.push({ label: "内外盘差较大", tone: "danger" });
+    tags.push({ label: "内外盘差大", tone: "danger" });
   }
+  if (tags.length === 0 && intel.movement) tags.push({ label: "有盘口变化", tone: "warning" });
+  if (tags.length === 0 && intel.alignment?.time_aligned) tags.push({ label: "时间已对齐", tone: "success" });
   return tags;
 }
 
@@ -244,7 +248,7 @@ export function FixtureDetailClient({
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-5">
       <PageIntro
         eyebrow="单场详情"
         title={
@@ -259,30 +263,39 @@ export function FixtureDetailClient({
             ? `${fixture.competition_name_zh || fixture.competition_name || "赛事"} · ${
                 fixture.kickoff_time_zh || fixture.utc_date || "时间待定"
               }`
-            : "集中查看单场比赛的赛程、预测、盘口观察与后续入口。"
+            : "单场比赛的赛程、预测、盘口观察与复盘。"
         }
         actions={
           <>
-            <SecondaryLink href={backDate ? `/fixtures?date=${backDate}` : "/fixtures"}>回到比赛页</SecondaryLink>
-            <SecondaryLink href={backDate ? `/predictions?date=${backDate}` : "/predictions"}>回到预测页</SecondaryLink>
-            <SecondaryLink href="/chat">让助手解释</SecondaryLink>
+            <SecondaryLink href={backDate ? `/fixtures?date=${backDate}` : "/fixtures"}>回到比赛</SecondaryLink>
+            <SecondaryLink href={backDate ? `/predictions?date=${backDate}` : "/predictions"}>回到预测</SecondaryLink>
           </>
         }
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="比赛编号" value={String(fixtureId)} hint="当前单场详情的 fixture_id" />
-        <MetricCard label="预测状态" value={loading ? "…" : prediction ? "已生成" : "未生成"} hint="是否已拿到单场预测结果" />
-        <MetricCard label="市场信号" value={loading ? "…" : String(marketTags.length)} hint="盘口与内外盘观察标签数" />
-        <MetricCard
-          label="盘口对齐"
-          value={loading ? "…" : marketIntel?.alignment?.time_aligned ? "已对齐" : "待确认"}
-          hint="体彩与外盘快照的时间对齐状态"
-        />
-      </section>
+      <StatStrip
+        items={[
+          { label: "比赛编号", value: String(fixtureId) },
+          {
+            label: "预测状态",
+            value: loading ? "…" : prediction ? "已生成" : "未生成",
+            tone: prediction ? "success" : "warning",
+          },
+          {
+            label: "市场信号",
+            value: loading ? "…" : String(marketTags.length),
+            tone: marketTags.some((tag) => tag.tone === "danger") ? "danger" : "neutral",
+          },
+          {
+            label: "盘口对齐",
+            value: loading ? "…" : marketIntel?.alignment?.time_aligned ? "已对齐" : "待确认",
+            tone: marketIntel?.alignment?.time_aligned ? "success" : "neutral",
+          },
+        ]}
+      />
 
       {error ? (
-        <section className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{error}</section>
+        <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{error}</div>
       ) : null}
 
       {!loading && !fixture ? (
@@ -292,110 +305,109 @@ export function FixtureDetailClient({
       {fixture ? (
         <SurfaceCard
           title="比赛详情"
-          description="这里汇总赛程、预测、价值建议与盘口时间线，便于直接做单场判断。"
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={backDate ? `/predictions?date=${backDate}&fixtureId=${fixture.fixture_id}` : `/predictions?fixtureId=${fixture.fixture_id}`}
+                className="rounded-md bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-zinc-700"
+              >
+                在预测页定位
+              </Link>
+              <Link
+                href={backDate ? `/fixtures?date=${backDate}&fixtureId=${fixture.fixture_id}` : `/fixtures?fixtureId=${fixture.fixture_id}`}
+                className={LINK_MUTED}
+              >
+                在比赛页定位
+              </Link>
+            </div>
+          }
         >
-          <MatchDetailCard
-            fixture={fixture}
-            prediction={prediction}
-            marketIntel={marketIntel}
-            actions={
-              <>
-                <Link
-                  href={backDate ? `/predictions?date=${backDate}&fixtureId=${fixture.fixture_id}` : `/predictions?fixtureId=${fixture.fixture_id}`}
-                  className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-                >
-                  在预测页定位这场比赛
-                </Link>
-                <Link
-                  href={backDate ? `/fixtures?date=${backDate}&fixtureId=${fixture.fixture_id}` : `/fixtures?fixtureId=${fixture.fixture_id}`}
-                  className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
-                >
-                  在比赛页定位这场比赛
-                </Link>
-              </>
-            }
-          />
+          <MatchDetailCard fixture={fixture} prediction={prediction} marketIntel={marketIntel} />
         </SurfaceCard>
       ) : null}
 
-      <section className="grid gap-6 xl:grid-cols-2">
-        <SurfaceCard title="赔率与模型快照" description="把当前赔率、已存预测快照和 EV/Kelly 摘要放在一起。">
-          <div className="grid gap-4">
-            <div className="rounded-xl border border-zinc-200 px-4 py-3">
-              <div className="text-sm font-semibold text-zinc-950">当前赔率快照</div>
+      <section className="grid gap-5 xl:grid-cols-2">
+        <SurfaceCard title="赔率与模型快照">
+          <div className="divide-y divide-zinc-100">
+            <div className="pb-4">
+              <div className="text-xs font-medium text-zinc-500">当前赔率快照</div>
               {oddsSnapshot ? (
-                <div className="mt-2 grid grid-cols-3 gap-3 text-sm">
-                  <div className="rounded-lg bg-zinc-50 px-3 py-2">
-                    <div className="text-xs text-zinc-500">主胜</div>
-                    <div className="mt-1 font-semibold text-zinc-950">{oddsSnapshot.odds_home ?? "-"}</div>
-                  </div>
-                  <div className="rounded-lg bg-zinc-50 px-3 py-2">
-                    <div className="text-xs text-zinc-500">平</div>
-                    <div className="mt-1 font-semibold text-zinc-950">{oddsSnapshot.odds_draw ?? "-"}</div>
-                  </div>
-                  <div className="rounded-lg bg-zinc-50 px-3 py-2">
-                    <div className="text-xs text-zinc-500">客胜</div>
-                    <div className="mt-1 font-semibold text-zinc-950">{oddsSnapshot.odds_away ?? "-"}</div>
-                  </div>
+                <div className="mt-2 grid grid-cols-3 gap-x-4">
+                  {[
+                    { label: "主胜", value: oddsSnapshot.odds_home },
+                    { label: "平", value: oddsSnapshot.odds_draw },
+                    { label: "客胜", value: oddsSnapshot.odds_away },
+                  ].map((item) => (
+                    <div key={item.label}>
+                      <div className="text-xs text-zinc-500">{item.label}</div>
+                      <div className="mt-0.5 text-sm font-semibold tabular-nums text-zinc-900">{item.value ?? "-"}</div>
+                    </div>
+                  ))}
                 </div>
               ) : (
-                <EmptyState text="当前没有可用的赔率快照。" />
+                <p className="mt-2 text-xs text-zinc-400">当前没有可用的赔率快照。</p>
               )}
             </div>
 
-            <div className="rounded-xl border border-zinc-200 px-4 py-3">
-              <div className="text-sm font-semibold text-zinc-950">模型快照</div>
+            <div className="pt-4">
+              <div className="text-xs font-medium text-zinc-500">模型快照</div>
               {predictionSnapshot ? (
-                <div className="mt-2 grid gap-2 text-xs text-zinc-600">
+                <div className="mt-2 grid gap-1 text-xs leading-5 text-zinc-600">
                   <div>
-                    版本 {predictionSnapshot.model_version || "-"}，生成时间{" "}
+                    版本 <span className="tabular-nums text-zinc-900">{predictionSnapshot.model_version || "-"}</span> · 生成时间{" "}
                     {predictionSnapshot.generated_at ? new Date(predictionSnapshot.generated_at).toLocaleString("zh-CN") : "-"}
                   </div>
-                  <div>
-                    胜平负概率：主胜 {Math.round(predictionSnapshot.p_home * 100)}%，平 {Math.round(predictionSnapshot.p_draw * 100)}%，客胜{" "}
+                  <div className="tabular-nums">
+                    胜平负：主胜 {Math.round(predictionSnapshot.p_home * 100)}% · 平 {Math.round(predictionSnapshot.p_draw * 100)}% · 客胜{" "}
                     {Math.round(predictionSnapshot.p_away * 100)}%
                   </div>
-                  <div>
-                    λH {predictionSnapshot.lambda_home?.toFixed(2) ?? "-"}，λA {predictionSnapshot.lambda_away?.toFixed(2) ?? "-"}，
-                    置信 {predictionSnapshot.confidence != null ? `${Math.round(predictionSnapshot.confidence * 100)}%` : "-"}
+                  <div className="tabular-nums">
+                    λH {predictionSnapshot.lambda_home?.toFixed(2) ?? "-"} · λA {predictionSnapshot.lambda_away?.toFixed(2) ?? "-"} · 置信{" "}
+                    {predictionSnapshot.confidence != null ? `${Math.round(predictionSnapshot.confidence * 100)}%` : "-"}
                   </div>
-                  <div>
+                  <div className="tabular-nums">
                     EV：主 {predictionSnapshot.ev_home?.toFixed(3) ?? "-"} / 平 {predictionSnapshot.ev_draw?.toFixed(3) ?? "-"} / 客{" "}
                     {predictionSnapshot.ev_away?.toFixed(3) ?? "-"}
                   </div>
-                  <div>
+                  <div className="tabular-nums">
                     Kelly：主 {predictionSnapshot.kelly_home?.toFixed(3) ?? "-"} / 平 {predictionSnapshot.kelly_draw?.toFixed(3) ?? "-"} / 客{" "}
                     {predictionSnapshot.kelly_away?.toFixed(3) ?? "-"}
                   </div>
                 </div>
               ) : (
-                <EmptyState text="当前还没有持久化的预测快照，可能尚未执行过预测快照写入。" />
+                <p className="mt-2 text-xs text-zinc-400">当前还没有持久化的预测快照。</p>
               )}
             </div>
           </div>
         </SurfaceCard>
 
-        <SurfaceCard title="市场信号摘要" description="方便在独立详情页先判断这场比赛是否值得优先处理。">
+        <SurfaceCard title="市场信号">
           {marketTags.length > 0 ? (
             <div className="grid gap-3">
-              <div className="flex flex-wrap gap-2">
+              <div className="flex flex-wrap gap-1.5">
                 {marketTags.map((tag) => (
                   <StatusBadge key={tag.label} tone={tag.tone}>
                     {tag.label}
                   </StatusBadge>
                 ))}
               </div>
-              <div className="text-xs text-zinc-500">
+              <div className="flex flex-wrap gap-x-5 gap-y-1 text-xs text-zinc-500">
                 {marketIntel?.movement?.home_line_strength_delta != null ? (
                   <span>
-                    盘口强度 {marketIntel.movement.home_line_strength_delta > 0 ? "+" : ""}
-                    {marketIntel.movement.home_line_strength_delta.toFixed(2)}
+                    盘口强度{" "}
+                    <span className="tabular-nums text-zinc-900">
+                      {marketIntel.movement.home_line_strength_delta > 0 ? "+" : ""}
+                      {marketIntel.movement.home_line_strength_delta.toFixed(2)}
+                    </span>
                   </span>
                 ) : null}
                 {marketIntel?.alignment?.sporttery_minus_outer_handicap_median != null ? (
-                  <span className={marketIntel?.movement?.home_line_strength_delta != null ? "ml-3" : ""}>
-                    内外盘差 {marketIntel.alignment.sporttery_minus_outer_handicap_median > 0 ? "+" : ""}
-                    {marketIntel.alignment.sporttery_minus_outer_handicap_median.toFixed(2)}
+                  <span>
+                    内外盘差{" "}
+                    <span className="tabular-nums text-zinc-900">
+                      {marketIntel.alignment.sporttery_minus_outer_handicap_median > 0 ? "+" : ""}
+                      {marketIntel.alignment.sporttery_minus_outer_handicap_median.toFixed(2)}
+                    </span>
                   </span>
                 ) : null}
               </div>
@@ -405,204 +417,151 @@ export function FixtureDetailClient({
           )}
         </SurfaceCard>
 
-        <SurfaceCard title="近期走势" description="展示双方最近已完赛记录，帮助判断近期状态与进失球趋势。">
-          <div className="grid gap-4 lg:grid-cols-2">
-            <RecentFormPanel title="主队近期" form={insights?.recent_form.home || null} />
-            <RecentFormPanel title="客队近期" form={insights?.recent_form.away || null} />
+        <SurfaceCard title="近期走势">
+          <div className="grid gap-4 lg:grid-cols-2 lg:gap-0 lg:divide-x lg:divide-zinc-100">
+            <div className="lg:pr-4">
+              <RecentFormPanel title="主队近期" form={insights?.recent_form.home || null} />
+            </div>
+            <div className="lg:pl-4">
+              <RecentFormPanel title="客队近期" form={insights?.recent_form.away || null} />
+            </div>
           </div>
         </SurfaceCard>
 
-        <SurfaceCard title="单场复盘" description="如果比赛已经结束，基于赛前快照给出这场比赛的复盘结果。">
+        <SurfaceCard title="单场复盘">
           {backtestReview ? (
-            <div className="grid gap-3">
-              <div className="flex flex-wrap gap-2">
+            <div className="grid gap-2">
+              <div className="flex flex-wrap items-center gap-1.5">
                 <StatusBadge tone={backtestReview.hit ? "success" : "danger"}>
                   {backtestReview.hit ? "命中结果" : "未命中"}
                 </StatusBadge>
                 <StatusBadge tone="neutral">实际 {backtestReview.actual_outcome}</StatusBadge>
                 <StatusBadge tone="neutral">预测 {backtestReview.predicted_outcome}</StatusBadge>
               </div>
-              <div className="text-sm text-zinc-700">最终比分：{backtestReview.score}</div>
-              <div className="text-xs text-zinc-500">单场 logloss：{backtestReview.logloss.toFixed(4)}</div>
+              <div className="text-xs text-zinc-600">
+                最终比分 <span className="tabular-nums text-zinc-900">{backtestReview.score}</span>
+              </div>
+              <div className="text-xs tabular-nums text-zinc-400">单场 logloss {backtestReview.logloss.toFixed(4)}</div>
             </div>
           ) : (
             <EmptyState text="当前还没有可展示的单场复盘。通常是比赛尚未结束，或赛前预测快照尚未写入。" />
           )}
         </SurfaceCard>
+      </section>
 
-        <SurfaceCard
-          title="助手解读"
-          description="基于本页已有数据，自动生成结构化解读。若未配置 OpenRouter，会返回提示。"
-        >
-          <div className="grid gap-3">
-            <div className="flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={() => setExplainMode("brief")}
-                className={
-                  explainMode === "brief"
-                    ? "rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white"
-                    : "rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-200"
-                }
-              >
-                简版
-              </button>
-              <button
-                type="button"
-                onClick={() => setExplainMode("detailed")}
-                className={
-                  explainMode === "detailed"
-                    ? "rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white"
-                    : "rounded-full bg-zinc-100 px-3 py-1.5 text-xs font-medium text-zinc-700 hover:bg-zinc-200"
-                }
-              >
-                详细
-              </button>
-              <button
-                type="button"
-                onClick={runExplain}
-                disabled={explainLoading}
-                className="ml-auto rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white disabled:opacity-60"
-              >
-                {explainLoading ? "生成中…" : "生成解读"}
-              </button>
+      <SurfaceCard
+        title="助手解读"
+        action={
+          <div className="flex flex-wrap items-center gap-2">
+            <Chip active={explainMode === "brief"} onClick={() => setExplainMode("brief")}>
+              简版
+            </Chip>
+            <Chip active={explainMode === "detailed"} onClick={() => setExplainMode("detailed")}>
+              详细
+            </Chip>
+            <ActionButton onClick={runExplain} disabled={explainLoading}>
+              {explainLoading ? "生成中…" : "生成解读"}
+            </ActionButton>
+          </div>
+        }
+      >
+        <div className="grid gap-3">
+          {explainError ? (
+            <div className="rounded-lg border border-red-200 bg-red-50 px-4 py-3 text-xs text-red-700">{explainError}</div>
+          ) : null}
+
+          {explainContent ? (
+            <>
+              <div className="flex flex-wrap gap-2">
+                <button type="button" onClick={copyExplain} className={LINK_MUTED}>
+                  复制 Markdown
+                </button>
+                <button
+                  type="button"
+                  onClick={() => downloadText(`fixture_${fixtureId}_explain_${explainMode}.md`, explainContent)}
+                  className={LINK_MUTED}
+                >
+                  下载 .md
+                </button>
+                <button type="button" onClick={saveExplain} className={LINK_MUTED}>
+                  本地保存
+                </button>
+                <button type="button" onClick={saveExplainToCloud} disabled={cloudLoading} className={`${LINK_MUTED} disabled:opacity-60`}>
+                  {cloudLoading ? "保存中…" : "保存到云端"}
+                </button>
+              </div>
+              <div className="rounded-md border border-zinc-200 bg-zinc-50 px-4 py-3 text-xs leading-5 whitespace-pre-wrap text-zinc-700">
+                {explainContent}
+              </div>
+            </>
+          ) : (
+            <EmptyState text="点击“生成解读”，让助手基于本页数据输出判断要点与下一步建议。" />
+          )}
+
+          {cloudError ? (
+            <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs text-amber-800">
+              云端保存不可用：{cloudError}
             </div>
+          ) : null}
 
-            {explainError ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">{explainError}</div>
-            ) : null}
-
-            {explainContent ? (
-              <div className="grid gap-3">
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    type="button"
-                    onClick={copyExplain}
-                    className="rounded-xl border border-zinc-200 px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50"
-                  >
-                    复制 Markdown
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => downloadText(`fixture_${fixtureId}_explain_${explainMode}.md`, explainContent)}
-                    className="rounded-xl border border-zinc-200 px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50"
-                  >
-                    下载 .md
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveExplain}
-                    className="rounded-xl border border-zinc-200 px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50"
-                  >
-                    本地保存
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveExplainToCloud}
-                    disabled={cloudLoading}
-                    className="rounded-xl border border-zinc-200 px-3 py-2 text-xs text-zinc-700 hover:bg-zinc-50 disabled:opacity-60"
-                  >
-                    {cloudLoading ? "保存中…" : "保存到云端"}
-                  </button>
-                </div>
-                <div className="rounded-xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-800 whitespace-pre-wrap">
-                  {explainContent}
-                </div>
+          <div className="grid gap-4 border-t border-zinc-100 pt-4 lg:grid-cols-2">
+            <div>
+              <div className="text-xs font-medium text-zinc-500">
+                本地已保存 <span className="tabular-nums text-zinc-400">{saved.length}</span>
               </div>
-            ) : (
-              <EmptyState text="点击“生成解读”，让助手基于本页数据输出判断要点与下一步建议。" />
-            )}
-
-            {cloudError ? (
-              <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-                云端保存不可用：{cloudError}
-              </div>
-            ) : null}
-
-            {saved.length > 0 ? (
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-                <div className="text-sm font-semibold text-zinc-950">本地已保存解读</div>
-                <div className="mt-2 grid gap-2">
+              {saved.length > 0 ? (
+                <div className="mt-2">
                   {saved.slice(0, 5).map((item) => (
-                    <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2">
-                      <div className="text-xs text-zinc-600">
+                    <div
+                      key={item.id}
+                      className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 py-2 last:border-b-0"
+                    >
+                      <span className="text-xs text-zinc-600">
                         {new Date(item.created_at).toLocaleString("zh-CN")} · {item.mode === "brief" ? "简版" : "详细"}
-                      </div>
-                      <div className="flex gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setExplainContent(item.content)}
-                          className="rounded-lg border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                        >
+                      </span>
+                      <span className="flex gap-2">
+                        <button type="button" onClick={() => setExplainContent(item.content)} className={LINK_MUTED}>
                           加载
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => deleteSnapshot(item.id)}
-                          className="rounded-lg border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                        >
+                        <button type="button" onClick={() => deleteSnapshot(item.id)} className={LINK_MUTED}>
                           删除
                         </button>
-                      </div>
+                      </span>
                     </div>
                   ))}
                 </div>
-                <div className="mt-2 text-xs text-zinc-500">说明：本地保存仅存浏览器本地，不写入数据库。</div>
-              </div>
-            ) : null}
+              ) : (
+                <p className="mt-2 text-xs text-zinc-400">暂无本地保存记录（仅存浏览器本地，不写入数据库）。</p>
+              )}
+            </div>
 
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="text-sm font-semibold text-zinc-950">云端已保存解读</div>
-                <StatusBadge tone="neutral">{cloudLoading ? "加载中…" : `${cloudSaved.length} 条`}</StatusBadge>
+            <div>
+              <div className="text-xs font-medium text-zinc-500">
+                云端已保存 <span className="tabular-nums text-zinc-400">{cloudLoading ? "…" : cloudSaved.length}</span>
               </div>
               {cloudSaved.length > 0 ? (
-                <div className="mt-2 grid gap-2">
+                <div className="mt-2">
                   {cloudSaved.slice(0, 8).map((item) => (
-                    <div key={item.id} className="flex flex-wrap items-center justify-between gap-2 rounded-lg bg-white px-3 py-2">
-                      <div className="text-xs text-zinc-600">
+                    <div
+                      key={item.id}
+                      className="flex flex-wrap items-center justify-between gap-2 border-b border-zinc-100 py-2 last:border-b-0"
+                    >
+                      <span className="text-xs text-zinc-600">
                         {new Date(item.created_at).toLocaleString("zh-CN")} · {item.mode === "brief" ? "简版" : "详细"}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => setExplainContent(item.content)}
-                        className="rounded-lg border border-zinc-200 px-2 py-1 text-xs text-zinc-700 hover:bg-zinc-50"
-                      >
+                      </span>
+                      <button type="button" onClick={() => setExplainContent(item.content)} className={LINK_MUTED}>
                         加载
                       </button>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="mt-2">
-                  <EmptyState text="暂无云端保存记录。你可以先生成解读，再点“保存到云端”。" />
-                </div>
+                <p className="mt-2 text-xs text-zinc-400">暂无云端保存记录（写入 Supabase，适合多人共享与审计）。</p>
               )}
-              <div className="mt-2 text-xs text-zinc-500">说明：云端保存写入 Supabase，适合多人共享与审计。</div>
             </div>
           </div>
-        </SurfaceCard>
-
-        <SurfaceCard title="下一步操作" description="从单场详情继续进入列表页、预测页或助手解释。">
-          <div className="grid gap-3 text-sm">
-            <Link
-              href={backDate ? `/fixtures?date=${backDate}` : "/fixtures"}
-              className="rounded-xl border border-zinc-200 px-4 py-3 hover:bg-zinc-50"
-            >
-              回到比赛页继续筛选其他比赛
-            </Link>
-            <Link
-              href={backDate ? `/predictions?date=${backDate}` : "/predictions"}
-              className="rounded-xl border border-zinc-200 px-4 py-3 hover:bg-zinc-50"
-            >
-              回到预测页对比其他场次
-            </Link>
-            <Link href="/chat" className="rounded-xl border border-zinc-200 px-4 py-3 hover:bg-zinc-50">
-              让助手解释这场比赛的预测和盘口信号
-            </Link>
-          </div>
-        </SurfaceCard>
-      </section>
+        </div>
+      </SurfaceCard>
     </div>
   );
 }
@@ -615,33 +574,33 @@ function RecentFormPanel({
   form: FixtureInsightResponse["recent_form"]["home"];
 }) {
   return (
-    <div className="rounded-xl border border-zinc-200 px-4 py-3">
-      <div className="text-sm font-semibold text-zinc-950">
+    <div>
+      <div className="text-xs font-medium text-zinc-500">
         {title}
-        {form?.team_name ? <span className="ml-2 text-zinc-500">{form.team_name}</span> : null}
+        {form?.team_name ? <span className="ml-2 text-zinc-400">{form.team_name}</span> : null}
       </div>
       {form && form.matches.length > 0 ? (
-        <div className="mt-3 grid gap-2">
+        <div className="mt-2">
           {form.matches.map((match) => (
-            <div key={match.fixture_id} className="rounded-lg bg-zinc-50 px-3 py-2 text-xs">
-              <div className="flex items-center justify-between gap-2">
-                <div className="font-medium text-zinc-900">{match.opponent || "对手未知"}</div>
-                <StatusBadge
-                  tone={match.result === "W" ? "success" : match.result === "L" ? "danger" : "neutral"}
-                >
-                  {match.result || "-"}
-                </StatusBadge>
-              </div>
-              <div className="mt-1 text-zinc-600">
-                {match.competition || "赛事未知"} · {match.venue === "home" ? "主场" : "客场"} · {match.goals_for ?? "-"}-{match.goals_against ?? "-"}
-              </div>
+            <div
+              key={match.fixture_id}
+              className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-zinc-100 py-2 text-xs last:border-b-0"
+            >
+              <span className="font-medium text-zinc-900">{match.opponent || "对手未知"}</span>
+              <span className="tabular-nums text-zinc-500">
+                {match.goals_for ?? "-"}-{match.goals_against ?? "-"}
+              </span>
+              <span className="text-zinc-400">
+                {match.competition || "赛事未知"} · {match.venue === "home" ? "主场" : "客场"}
+              </span>
+              <StatusBadge tone={match.result === "W" ? "success" : match.result === "L" ? "danger" : "neutral"}>
+                {match.result || "-"}
+              </StatusBadge>
             </div>
           ))}
         </div>
       ) : (
-        <div className="mt-3">
-          <EmptyState text="暂无近期已完赛记录。" />
-        </div>
+        <p className="mt-2 text-xs text-zinc-400">暂无近期已完赛记录。</p>
       )}
     </div>
   );

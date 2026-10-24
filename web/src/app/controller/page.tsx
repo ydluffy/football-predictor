@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { ActionButton, PageIntro, StatusBadge, SurfaceCard } from "@/components/Workbench";
+import { ActionButton, PageIntro, StatStrip, StatusBadge, SurfaceCard } from "@/components/Workbench";
 import { ChatPanel } from "@/components/ChatPanel";
 import { WorkbenchLoginInline } from "@/components/WorkbenchLoginInline";
 import { getShanghaiToday } from "@/lib/time";
@@ -33,6 +33,17 @@ type LlmConfigListResponse = {
 
 function toSalesDay(d: Date) {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Shanghai", year: "numeric", month: "2-digit", day: "2-digit" }).format(d);
+}
+
+function relativeTime(iso: string) {
+  const at = Date.parse(iso);
+  if (!Number.isFinite(at)) return null;
+  const minutes = Math.floor(Math.max(0, Date.now() - at) / 60000);
+  if (minutes < 1) return "刚刚";
+  if (minutes < 60) return `${minutes} 分钟前`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours} 小时前`;
+  return `${Math.floor(hours / 24)} 天前`;
 }
 
 export default function ControllerPage() {
@@ -286,6 +297,27 @@ export default function ControllerPage() {
     return { status: "未知", tone: "neutral" as const };
   }, [controller]);
 
+  // 同步健康度：页面只读 Supabase，这里要能一眼看出数据是不是已经真的上来了。
+  const syncHealth = useMemo(() => {
+    const last = controller?.last_sync;
+    if (!last || typeof last.at !== "string") return null;
+    const pending = Number(last.pending_count ?? (Array.isArray(last.pending_keys) ? last.pending_keys.length : 0)) || 0;
+    const at = Date.parse(last.at);
+    const ageHours = Number.isFinite(at) ? (Date.now() - at) / 3600000 : 0;
+    const stale = Number.isFinite(at) && ageHours > 36;
+    const ok = Boolean(last.ok) && pending === 0 && !stale;
+    const tone = stale ? ("danger" as const) : pending > 0 || !last.ok ? ("warning" as const) : ("success" as const);
+    return {
+      label: relativeTime(last.at) || last.at,
+      ok,
+      tone,
+      pending,
+      reason: typeof last.last_failure_reason === "string" ? last.last_failure_reason : null,
+      stage: typeof last.stage === "string" ? last.stage : null,
+      webStarted: Boolean(last.web_started_by_sync),
+    };
+  }, [controller]);
+
   const assistantQuickPrompts = useMemo(() => {
     const sd = salesDay;
     return [
@@ -305,8 +337,18 @@ export default function ControllerPage() {
     <div className="grid gap-6">
       <PageIntro
         eyebrow="总控"
-        title="总控助手"
-        description="把“同步 + 状态摘要 + 解释建议”收进一个卡片里。需要更多细节时再展开查看。"
+        title="销售日总控"
+        description="同步总控数据，再让助手解释“计划 vs 执行”的差异与风险。"
+        actions={
+          <>
+            <ActionButton tone="secondary" onClick={() => refresh()} disabled={loading}>
+              {loading ? "刷新中…" : "刷新"}
+            </ActionButton>
+            <ActionButton tone="secondary" onClick={() => syncDays([salesDay, yesterday])} disabled={loading}>
+              {loading ? "同步中…" : "同步今日 + 昨日"}
+            </ActionButton>
+          </>
+        }
       />
 
       {needAuth ? (
@@ -320,34 +362,21 @@ export default function ControllerPage() {
       ) : null}
 
       {msg ? (
-        <section className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700 shadow-sm">
+        <section className="rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-600">
           <pre className="whitespace-pre-wrap font-sans">{msg}</pre>
         </section>
       ) : null}
 
-      <SurfaceCard
-        title="总控助手（一个板块）"
-        description="建议使用方式：先同步 → 再让助手解释差异/风险 → 必要时展开细节。"
-        action={
-          <div className="flex flex-wrap gap-2">
-            <ActionButton tone="secondary" onClick={() => refresh()} disabled={loading}>
-              {loading ? "刷新中…" : "刷新"}
-            </ActionButton>
-            <ActionButton tone="secondary" onClick={() => syncDays([salesDay, yesterday])} disabled={loading}>
-              {loading ? "同步中…" : "同步今日+昨日"}
-            </ActionButton>
-          </div>
-        }
-      >
+      <SurfaceCard title="总控助手">
         <div className="grid gap-4">
-          <div className="grid gap-3 sm:grid-cols-[1fr_auto_auto] sm:items-end">
-            <label className="grid gap-2 text-sm text-zinc-600">
-              <span>sales_day</span>
+          <div className="flex flex-wrap items-end gap-2">
+            <label className="grid gap-1.5 text-xs text-zinc-600">
+              <span>销售日</span>
               <input
                 type="date"
                 value={salesDay}
                 onChange={(e) => setSalesDay(e.target.value)}
-                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
+                className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400"
               />
             </label>
             <ActionButton onClick={() => refresh(salesDay)} disabled={loading}>
@@ -358,22 +387,48 @@ export default function ControllerPage() {
             </ActionButton>
           </div>
 
-          <div className="flex flex-wrap items-center gap-2 text-xs">
-            <StatusBadge tone={controllerSummary.tone}>控制器：{controllerSummary.status}</StatusBadge>
-            <StatusBadge tone={overrideTasks.length > 0 ? "success" : "warning"}>计划：{overrideTasks.length} 阶段</StatusBadge>
-            <StatusBadge tone={registryTasks.length > 0 ? "success" : "warning"}>执行：{registryTasks.length} 任务</StatusBadge>
-            {registryStats.failed > 0 ? <StatusBadge tone="danger">失败：{registryStats.failed}</StatusBadge> : null}
-            {registryStats.scheduled > 0 ? <StatusBadge tone="neutral">待跑：{registryStats.scheduled}</StatusBadge> : null}
-            {registryStats.completed > 0 ? <StatusBadge tone="success">已完成：{registryStats.completed}</StatusBadge> : null}
-          </div>
+          <StatStrip
+            columns={4}
+            items={[
+              { label: "控制器", value: controllerSummary.status, tone: controllerSummary.tone },
+              {
+                label: "计划",
+                value: `${overrideTasks.length} 阶段`,
+                tone: overrideTasks.length > 0 ? "success" : "warning",
+              },
+              {
+                label: "执行",
+                value: `${registryTasks.length} 任务`,
+                hint: `完成 ${registryStats.completed} · 待跑 ${registryStats.scheduled}`,
+                tone: registryTasks.length > 0 ? "success" : "warning",
+              },
+              {
+                label: "失败",
+                value: String(registryStats.failed),
+                tone: registryStats.failed > 0 ? "danger" : undefined,
+              },
+            ]}
+          />
+
+          {syncHealth ? (
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-zinc-500">
+              <StatusBadge tone={syncHealth.tone}>{syncHealth.ok ? "同步正常" : "同步需注意"}</StatusBadge>
+              <span>上次同步：{syncHealth.label}</span>
+              {syncHealth.stage ? <span>阶段 {syncHealth.stage}</span> : null}
+              {syncHealth.pending > 0 ? <span className="text-amber-600">待补偿 {syncHealth.pending}</span> : null}
+              {syncHealth.reason ? <span className="text-red-600">最近失败：{syncHealth.reason}</span> : null}
+              {syncHealth.webStarted ? <span>Web 由脚本自拉起</span> : null}
+            </div>
+          ) : (
+            <div className="text-xs text-zinc-400">尚无同步健康度：本地跑一次阶段同步后自动出现。</div>
+          )}
 
           {dataGapHint ? (
-            <div className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-3 text-sm text-amber-900">{dataGapHint}</div>
+            <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">{dataGapHint}</div>
           ) : null}
 
           <ChatPanel
             mode="embedded"
-            showMetrics={false}
             heightClassName="h-[42vh]"
             context={{ page: "controller", sales_day: salesDay }}
             initialMessages={[
@@ -386,17 +441,14 @@ export default function ControllerPage() {
             quickPrompts={assistantQuickPrompts}
           />
 
-          <details className="rounded-xl border border-zinc-200 bg-white px-4 py-3">
+          <details className="border-t border-zinc-100 pt-3">
             <summary className="cursor-pointer text-sm font-medium text-zinc-900">模型配置（BYOK，可选）</summary>
             <div className="mt-3 grid gap-3">
-              <div className="text-xs text-zinc-600">
-                说明：这里配置的是“总控助手”的大模型接口。球赛事实仍以系统数据为准；模型只负责表达、建议与追问。API Key 会在服务端加密存储，
-                页面不会回显明文。若未配置模型，助手仍可回答系统类问题。
+              <div className="text-xs text-zinc-500">
+                配置“总控助手”使用的大模型。球赛事实仍以系统数据为准，模型只负责表达与建议。API Key 服务端加密存储，页面不回显明文。
               </div>
 
-              {llmMsg ? (
-                <div className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2 text-xs text-zinc-700 whitespace-pre-wrap">{llmMsg}</div>
-              ) : null}
+              {llmMsg ? <div className="whitespace-pre-wrap text-xs text-zinc-600">{llmMsg}</div> : null}
 
               <div className="flex flex-wrap items-center gap-2">
                 <StatusBadge tone={llmActiveId ? "success" : "warning"}>当前：{llmActiveId ? "已启用" : "未启用"}</StatusBadge>
@@ -411,19 +463,20 @@ export default function ControllerPage() {
                 </ActionButton>
               </div>
 
-              <div className="grid gap-2">
-                <div className="text-xs font-medium text-zinc-700">已有配置</div>
+              <div>
+                <div className="text-xs text-zinc-500">已有配置</div>
                 {llmConfigs.length === 0 ? (
-                  <div className="text-xs text-zinc-500">暂无配置。你可以新增一个国内模型配置（方舟/DeepSeek/通义千问）或自定义网关。</div>
+                  <div className="mt-1 text-xs text-zinc-400">暂无配置，可在下方新增。</div>
                 ) : (
-                  llmConfigs.map((c) => (
-                    <div key={c.id} className="rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-2">
-                      <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="mt-1 divide-y divide-zinc-100">
+                    {llmConfigs.map((c) => (
+                      <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0">
                         <div className="min-w-0">
-                          <div className="text-sm text-zinc-950">
-                            {c.label} {llmActiveId === c.id ? <span className="text-xs text-emerald-700">（已启用）</span> : null}
+                          <div className="text-sm text-zinc-900">
+                            {c.label}
+                            {llmActiveId === c.id ? <span className="ml-1 text-xs text-emerald-600">已启用</span> : null}
                           </div>
-                          <div className="mt-1 text-xs text-zinc-600 break-all">
+                          <div className="mt-0.5 break-all text-xs text-zinc-500">
                             {c.provider} · {c.model} · {c.base_url}
                           </div>
                         </div>
@@ -436,13 +489,13 @@ export default function ControllerPage() {
                           </ActionButton>
                         </div>
                       </div>
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
 
-              <div className="grid gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3">
-                <div className="text-xs font-medium text-zinc-700">新增配置</div>
+              <div className="grid gap-2 border-t border-zinc-100 pt-3">
+                <div className="text-xs text-zinc-500">新增配置</div>
                 <div className="grid gap-2 sm:grid-cols-2">
                   <label className="grid gap-1 text-xs text-zinc-600">
                     <span>名称</span>
@@ -450,7 +503,7 @@ export default function ControllerPage() {
                       value={newCfg.label}
                       onChange={(e) => setNewCfg((s) => ({ ...s, label: e.target.value }))}
                       placeholder="例如：豆包 Pro（自带 Key）"
-                      className="rounded-lg border border-zinc-200 bg-white px-2 py-2 outline-none focus:border-zinc-400"
+                      className="rounded-md border border-zinc-200 bg-white px-2.5 py-2 outline-none focus:border-zinc-400"
                     />
                   </label>
                   <label className="grid gap-1 text-xs text-zinc-600">
@@ -459,7 +512,7 @@ export default function ControllerPage() {
                       value={newCfg.model}
                       onChange={(e) => setNewCfg((s) => ({ ...s, model: e.target.value }))}
                       placeholder="例如：doubao-seed-xxx / deepseek-chat / qwen-plus"
-                      className="rounded-lg border border-zinc-200 bg-white px-2 py-2 outline-none focus:border-zinc-400"
+                      className="rounded-md border border-zinc-200 bg-white px-2.5 py-2 outline-none focus:border-zinc-400"
                     />
                   </label>
                 </div>
@@ -468,7 +521,7 @@ export default function ControllerPage() {
                   <select
                     value={newCfg.provider}
                     onChange={(e) => setNewCfg((s) => ({ ...s, provider: e.target.value }))}
-                    className="rounded-lg border border-zinc-200 bg-white px-2 py-2 outline-none focus:border-zinc-400"
+                    className="rounded-md border border-zinc-200 bg-white px-2.5 py-2 outline-none focus:border-zinc-400"
                   >
                     <option value="ark">火山方舟</option>
                     <option value="deepseek">DeepSeek</option>
@@ -482,7 +535,7 @@ export default function ControllerPage() {
                     value={newCfg.base_url}
                     onChange={(e) => setNewCfg((s) => ({ ...s, base_url: e.target.value }))}
                     placeholder="例如：https://ark.cn-beijing.volces.com/api/coding/v3 或 https://api.deepseek.com 或 https://dashscope.aliyuncs.com/compatible-mode/v1"
-                    className="rounded-lg border border-zinc-200 bg-white px-2 py-2 outline-none focus:border-zinc-400"
+                    className="rounded-md border border-zinc-200 bg-white px-2.5 py-2 outline-none focus:border-zinc-400"
                   />
                 </label>
                 <label className="grid gap-1 text-xs text-zinc-600">
@@ -492,110 +545,78 @@ export default function ControllerPage() {
                     value={newCfg.api_key}
                     onChange={(e) => setNewCfg((s) => ({ ...s, api_key: e.target.value }))}
                     placeholder="sk-*** 或国内厂商 key"
-                    className="rounded-lg border border-zinc-200 bg-white px-2 py-2 outline-none focus:border-zinc-400"
+                    className="rounded-md border border-zinc-200 bg-white px-2.5 py-2 outline-none focus:border-zinc-400"
                   />
                 </label>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="flex flex-wrap items-center gap-3">
                   <ActionButton onClick={() => createConfig()} disabled={llmLoading}>
                     {llmLoading ? "提交中…" : "新增并保存"}
                   </ActionButton>
                   <div className="text-xs text-zinc-500">
-                    提示：若服务端未配置 `APP_ENCRYPTION_KEY`，保存会失败。请先在 `web/.env.local`（或线上环境变量）配置该值并重启服务。
+                    推荐：{(providerPresets as any)[newCfg.provider]?.label} 默认 base_url 会自动填充。
+                    {(providerPresets as any)[newCfg.provider]?.modelHint}
                   </div>
                 </div>
-                <div className="text-xs text-zinc-500">
-                  推荐：{(providerPresets as any)[newCfg.provider]?.label} 默认 base_url 会自动填充。{(providerPresets as any)[newCfg.provider]?.modelHint}
+                <div className="text-xs text-zinc-400">
+                  若服务端未配置 APP_ENCRYPTION_KEY，保存会失败，需先在环境变量中配置并重启服务。
                 </div>
               </div>
             </div>
           </details>
 
-          <details className="rounded-xl border border-zinc-200 bg-white px-4 py-3">
-            <summary className="cursor-pointer text-sm font-medium text-zinc-900">Repo Agent（规划中）</summary>
-            <div className="mt-3 grid gap-3 text-sm text-zinc-700">
-              <div className="text-xs text-zinc-600">
-                目标：让“总控助手”未来具备类似 Codex 的仓库工作能力（读代码、提出变更、产出 patch、跑校验），但先按你当前决定，走可运营的“云端
-                Agent 模式”，不直接访问本地磁盘。
-              </div>
-
-              <div className="grid gap-2 rounded-lg border border-zinc-200 bg-zinc-50 px-3 py-3 text-xs text-zinc-700">
-                <div className="font-medium text-zinc-800">能力契约（先占位，暂不执行）</div>
-                <ul className="list-disc pl-5">
-                  <li>
-                    上下文字段：<span className="font-mono">sales_day</span>（已启用）、<span className="font-mono">repo_snapshot_id</span>（预留）、
-                    <span className="font-mono">pipeline_run_id</span>（预留）
-                  </li>
-                  <li>
-                    未来工具集（云端沙箱）：<span className="font-mono">search_code</span> / <span className="font-mono">read_file</span> /{" "}
-                    <span className="font-mono">propose_patch</span> / <span className="font-mono">apply_patch</span> /{" "}
-                    <span className="font-mono">run_verify</span>
-                  </li>
-                  <li>安全边界：所有写入必须可审计、可回滚；默认先展示 diff，再确认应用。</li>
-                </ul>
-              </div>
-
-              <div className="grid gap-2">
-                <div className="text-xs font-medium text-zinc-700">当前状态</div>
-                <div className="flex flex-wrap items-center gap-2 text-xs">
-                  <StatusBadge tone="warning">未启用</StatusBadge>
-                  <StatusBadge tone="neutral">repo_snapshot_id：—</StatusBadge>
-                </div>
-                <div className="text-xs text-zinc-500">
-                  说明：现在的对话仍以“系统事实接口”为主（总控/赛程/预测/复盘）。Repo Agent 将在后续通过仓库快照/镜像接入，避免直接触达本地文件系统。
-                </div>
-              </div>
-            </div>
-          </details>
-
-          <details className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-            <summary className="cursor-pointer text-sm font-medium text-zinc-900">展开查看总控细节（计划/执行）</summary>
+          <details className="border-t border-zinc-100 pt-3">
+            <summary className="cursor-pointer text-sm font-medium text-zinc-900">总控细节（计划 / 执行）</summary>
             <div className="mt-3 grid gap-4 xl:grid-cols-2">
-              <div className="grid gap-2">
-                <div className="text-xs font-medium text-zinc-700">Override（计划）</div>
+              <div>
+                <div className="text-xs text-zinc-500">Override（计划）</div>
                 {overrideTasks.length === 0 ? (
-                  <div className="text-xs text-zinc-500">暂无 override。</div>
+                  <div className="mt-1 text-xs text-zinc-400">暂无 override。</div>
                 ) : (
-                  overrideTasks.map((t) => (
-                    <div key={String(t.key || t.run_at)} className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
-                      <div className="text-sm text-zinc-950">{String(t.key || "未命名任务")}</div>
-                      <div className="mt-1 text-xs text-zinc-500">
-                        {String(t.run_at || "—")} · {String(t.stage_type || "—")}
+                  <div className="mt-1 divide-y divide-zinc-100">
+                    {overrideTasks.map((t) => (
+                      <div key={String(t.key || t.run_at)} className="py-2.5 first:pt-0 last:pb-0">
+                        <div className="text-sm text-zinc-900">{String(t.key || "未命名任务")}</div>
+                        <div className="mt-0.5 text-xs text-zinc-500">
+                          {String(t.run_at || "—")} · {String(t.stage_type || "—")}
+                        </div>
+                        {t.scope ? <div className="mt-0.5 line-clamp-2 text-xs text-zinc-600">{String(t.scope)}</div> : null}
                       </div>
-                      {t.scope ? <div className="mt-1 text-xs text-zinc-600 line-clamp-2">{String(t.scope)}</div> : null}
-                    </div>
-                  ))
+                    ))}
+                  </div>
                 )}
               </div>
-              <div className="grid gap-2">
-                <div className="text-xs font-medium text-zinc-700">Registry（执行）</div>
+              <div>
+                <div className="text-xs text-zinc-500">Registry（执行）</div>
                 {registryTasks.length === 0 ? (
-                  <div className="text-xs text-zinc-500">暂无 registry。</div>
+                  <div className="mt-1 text-xs text-zinc-400">暂无 registry。</div>
                 ) : (
-                  registryTasks.map((t) => {
-                    const status = String(t.status || "unknown");
-                    const tone =
-                      status === "completed"
-                        ? "success"
-                        : status === "scheduled"
-                          ? "neutral"
-                          : status === "failed"
-                            ? "danger"
-                            : "warning";
-                    return (
-                      <div key={String(t.key || t.run_at)} className="rounded-lg border border-zinc-200 bg-white px-3 py-2">
-                        <div className="flex items-center justify-between gap-2">
-                          <div className="text-sm text-zinc-950">{String(t.task_name || t.key || "未命名任务")}</div>
-                          <StatusBadge tone={tone as any}>{status}</StatusBadge>
+                  <div className="mt-1 divide-y divide-zinc-100">
+                    {registryTasks.map((t) => {
+                      const status = String(t.status || "unknown");
+                      const tone =
+                        status === "completed"
+                          ? "success"
+                          : status === "scheduled"
+                            ? "neutral"
+                            : status === "failed"
+                              ? "danger"
+                              : "warning";
+                      return (
+                        <div key={String(t.key || t.run_at)} className="py-2.5 first:pt-0 last:pb-0">
+                          <div className="flex items-center justify-between gap-2">
+                            <div className="text-sm text-zinc-900">{String(t.task_name || t.key || "未命名任务")}</div>
+                            <StatusBadge tone={tone as any}>{status}</StatusBadge>
+                          </div>
+                          <div className="mt-0.5 text-xs text-zinc-500">
+                            run_at {String(t.run_at || "—")}
+                            {t.hard_lock ? ` · lock ${String(t.hard_lock)}` : ""}
+                            {t.sales_cutoff ? ` · cutoff ${String(t.sales_cutoff)}` : ""}
+                          </div>
+                          {t.last_error ? <div className="mt-0.5 line-clamp-2 text-xs text-red-600">{String(t.last_error)}</div> : null}
                         </div>
-                        <div className="mt-1 text-xs text-zinc-500">
-                          run_at {String(t.run_at || "—")}
-                          {t.hard_lock ? ` · lock ${String(t.hard_lock)}` : ""}
-                          {t.sales_cutoff ? ` · cutoff ${String(t.sales_cutoff)}` : ""}
-                        </div>
-                        {t.last_error ? <div className="mt-1 text-xs text-red-700 line-clamp-2">{String(t.last_error)}</div> : null}
-                      </div>
-                    );
-                  })
+                      );
+                    })}
+                  </div>
                 )}
               </div>
             </div>

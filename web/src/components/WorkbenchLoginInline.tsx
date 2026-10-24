@@ -24,16 +24,16 @@ export function WorkbenchLoginInline(props: Props) {
   const hasStored = Boolean(getStoredAuthBase64());
 
   return (
-    <section className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 shadow-sm">
+    <section className="rounded-lg border border-zinc-200 bg-white px-4 py-3">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <div className="text-sm font-semibold text-zinc-950">{title}</div>
-          <div className="mt-1 text-xs text-zinc-600">{description}</div>
+          <div className="text-sm font-semibold text-zinc-900">{title}</div>
+          <div className="mt-0.5 text-xs text-zinc-500">{description}</div>
         </div>
         <StatusBadge tone={hasStored ? "success" : "warning"}>{hasStored ? "已保存凭证" : "未登录"}</StatusBadge>
       </div>
 
-      {msg ? <div className="mt-2 text-xs text-zinc-700 whitespace-pre-wrap">{msg}</div> : null}
+      {msg ? <div className="mt-2 whitespace-pre-wrap text-xs text-zinc-600">{msg}</div> : null}
 
       <div className="mt-3 grid gap-2 sm:grid-cols-2">
         <label className="grid gap-1 text-xs text-zinc-600">
@@ -42,7 +42,7 @@ export function WorkbenchLoginInline(props: Props) {
             value={username}
             onChange={(e) => setUsername(e.target.value)}
             placeholder="WORKBENCH_ADMIN_USER"
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400"
+            className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400"
           />
         </label>
         <label className="grid gap-1 text-xs text-zinc-600">
@@ -52,7 +52,7 @@ export function WorkbenchLoginInline(props: Props) {
             value={password}
             onChange={(e) => setPassword(e.target.value)}
             placeholder="WORKBENCH_ADMIN_PASSWORD"
-            className="rounded-lg border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400"
+            className="rounded-md border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400"
           />
         </label>
       </div>
@@ -65,7 +65,7 @@ export function WorkbenchLoginInline(props: Props) {
               return;
             }
             setStoredAuth(username, password);
-            setMsg("✅ 已保存登录凭证（仅保存在浏览器本地存储中）。现在可以重试页面操作。");
+            setMsg("已保存登录凭证（仅存于浏览器本地）。现在可以重试页面操作。");
             onSuccess?.();
           }}
         >
@@ -84,8 +84,8 @@ export function WorkbenchLoginInline(props: Props) {
         </ActionButton>
       </div>
 
-      <div className="mt-3 text-xs text-zinc-500">
-        说明：当前认证是 HTTP Basic，网页本身不保存服务器端 session。这里采用“前端为请求附带 Authorization 头”的方式，让你能在页面内完成登录。
+      <div className="mt-2 text-xs text-zinc-400">
+        认证方式为 HTTP Basic：页面不保存服务端 session，仅在请求时附带 Authorization 头。
       </div>
     </section>
   );

@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   ActionButton,
-  MetricCard,
   PageIntro,
   PrimaryLink,
   SecondaryLink,
+  StatStrip,
   StatusBadge,
   SurfaceCard,
 } from "@/components/Workbench";
@@ -177,9 +177,9 @@ export default function SetupPage() {
   return (
     <div className="grid gap-6">
       <PageIntro
-        eyebrow="系统工作页"
-        title="把环境、导入、赔率、快照和回测收在一个地方"
-        description="这页不再只是部署说明，而是完整的运行控制面板。先看环境和数据库健康，再执行导入、赔率拉取、赛前快照和赛后回测。"
+        eyebrow="系统"
+        title="环境、导入与回测"
+        description="先确认环境与数据库健康，再执行导入、赔率拉取、赛前快照与赛后回测。"
         actions={
           <>
             <PrimaryLink href="/fixtures">查看赛程</PrimaryLink>
@@ -197,31 +197,36 @@ export default function SetupPage() {
         />
       ) : null}
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard
-          label="环境就绪"
-          value={status ? `${envReadyCount}/5` : "…"}
-          hint="提示：除 Supabase 外，其余 key 均为可选能力"
-        />
-        <MetricCard
-          label="数据库状态"
-          value={status?.supabase.ok == null ? "待检查" : status.supabase.ok ? "正常" : "异常"}
-          hint="基于 `fixtures` 表连通性检测"
-        />
-        <MetricCard
-          label="fixtures 记录"
-          value={status?.supabase.fixturesCount != null ? String(status.supabase.fixturesCount) : "—"}
-          hint="当前 Supabase 中的比赛记录数"
-        />
-        <MetricCard
-          label="赔率能力"
-          value={status?.env.hasApiFootballKey ? "已启用" : "未启用"}
-          hint="决定是否可自动拉取赔率数据"
-        />
-      </section>
+      <StatStrip
+        items={[
+          {
+            label: "环境就绪",
+            value: status ? `${envReadyCount}/5` : "…",
+            hint: "除 Supabase 外均视为可选能力",
+            tone: status && envReadyCount >= 5 ? "success" : undefined,
+          },
+          {
+            label: "数据库状态",
+            value: status?.supabase.ok == null ? "待检查" : status.supabase.ok ? "正常" : "异常",
+            hint: "基于 fixtures 表连通性",
+            tone: status?.supabase.ok == null ? undefined : status.supabase.ok ? "success" : "danger",
+          },
+          {
+            label: "fixtures 记录",
+            value: status?.supabase.fixturesCount != null ? String(status.supabase.fixturesCount) : "—",
+            hint: "当前库内比赛数",
+          },
+          {
+            label: "赔率能力",
+            value: status?.env.hasApiFootballKey ? "已启用" : "未启用",
+            hint: "自动拉取赔率",
+            tone: status?.env.hasApiFootballKey ? "success" : undefined,
+          },
+        ]}
+      />
 
       {msg ? (
-        <section className="rounded-2xl border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700 shadow-sm">
+        <section className="rounded-lg border border-zinc-200 bg-white px-4 py-3 text-sm text-zinc-700">
           <pre className="whitespace-pre-wrap font-sans">{msg}</pre>
         </section>
       ) : null}
@@ -229,123 +234,107 @@ export default function SetupPage() {
       <div className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <SurfaceCard
           title="环境与连接"
-          description="先确认运行环境是否齐，再执行下面的导入与回测动作。"
           action={
             <ActionButton tone="secondary" onClick={refresh} disabled={loading}>
               刷新状态
             </ActionButton>
           }
         >
-          <div className="grid gap-3">
-            <div className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3">
-              <span className="text-sm text-zinc-600">SUPABASE_URL</span>
-              <StatusBadge tone={status?.env.hasSupabaseUrl ? "success" : "danger"}>
-                {status?.env.hasSupabaseUrl ? "已配置" : "缺失"}
-              </StatusBadge>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3">
-              <span className="text-sm text-zinc-600">SUPABASE_SERVICE_ROLE_KEY</span>
-              <StatusBadge tone={status?.env.hasSupabaseServiceRole ? "success" : "danger"}>
-                {status?.env.hasSupabaseServiceRole ? "已配置" : "缺失"}
-              </StatusBadge>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3">
-              <span className="text-sm text-zinc-600">FOOTBALL_DATA_API_KEY</span>
-              <StatusBadge tone={status?.env.hasFootballDataKey ? "success" : "warning"}>
-                {status?.env.hasFootballDataKey ? "已配置" : "未配置"}
-              </StatusBadge>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3">
-              <span className="text-sm text-zinc-600">OPENROUTER_API_KEY</span>
-              <StatusBadge tone={status?.env.hasOpenRouterKey ? "success" : "warning"}>
-                {status?.env.hasOpenRouterKey ? "已配置" : "未配置"}
-              </StatusBadge>
-            </div>
-            <div className="flex items-center justify-between rounded-xl border border-zinc-200 px-4 py-3">
-              <span className="text-sm text-zinc-600">API_FOOTBALL_KEY</span>
-              <StatusBadge tone={status?.env.hasApiFootballKey ? "success" : "warning"}>
-                {status?.env.hasApiFootballKey ? "已配置" : "未配置"}
-              </StatusBadge>
-            </div>
-            <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-600">
-              OpenRouter 模型：<span className="font-medium text-zinc-900">{status?.env.openRouterModel || "未显式设置"}</span>
-            </div>
-            {status?.supabase.ok === false ? (
-              <div className="rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-                Supabase 连接失败：{status.supabase.error}
+          <div className="divide-y divide-zinc-100">
+            {[
+              { label: "SUPABASE_URL", ok: status?.env.hasSupabaseUrl, missingTone: "danger" as const },
+              { label: "SUPABASE_SERVICE_ROLE_KEY", ok: status?.env.hasSupabaseServiceRole, missingTone: "danger" as const },
+              { label: "FOOTBALL_DATA_API_KEY", ok: status?.env.hasFootballDataKey, missingTone: "warning" as const },
+              { label: "OPENROUTER_API_KEY", ok: status?.env.hasOpenRouterKey, missingTone: "warning" as const },
+              { label: "API_FOOTBALL_KEY", ok: status?.env.hasApiFootballKey, missingTone: "warning" as const },
+            ].map((item) => (
+              <div key={item.label} className="flex items-center justify-between gap-3 py-2.5 first:pt-0 last:pb-0">
+                <span className="font-mono text-xs text-zinc-600">{item.label}</span>
+                <StatusBadge tone={item.ok ? "success" : item.missingTone}>{item.ok ? "已配置" : "未配置"}</StatusBadge>
               </div>
-            ) : null}
-            {status?.supabase.ok === true ? (
-              <div className="rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
-                Supabase 连接正常，当前 `fixtures` 表记录数：{status.supabase.fixturesCount ?? "-"}
-              </div>
-            ) : null}
+            ))}
           </div>
+          <div className="mt-3 border-t border-zinc-100 pt-3 text-xs text-zinc-500">
+            OpenRouter 模型：<span className="text-zinc-900">{status?.env.openRouterModel || "未显式设置"}</span>
+          </div>
+          {status?.supabase.ok === false ? (
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700">
+              Supabase 连接失败：{status.supabase.error}
+            </div>
+          ) : null}
+          {status?.supabase.ok === true ? (
+            <div className="mt-3 rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2.5 text-xs text-emerald-800">
+              Supabase 连接正常，fixtures 记录数：{status.supabase.fixturesCount ?? "-"}
+            </div>
+          ) : null}
         </SurfaceCard>
 
-        <SurfaceCard
-          title="操作提示"
-          description="建议按这个顺序操作，能尽量减少数据不完整导致的误判。"
-        >
-          <div className="grid gap-3 text-sm">
-            <div className="rounded-xl border border-zinc-200 px-4 py-3">1. 先刷新状态，确认数据库和环境变量都正常。</div>
-            <div className="rounded-xl border border-zinc-200 px-4 py-3">2. 导入比赛数据，再按需拉取赔率。</div>
-            <div className="rounded-xl border border-zinc-200 px-4 py-3">3. 赛前先保存预测快照，避免回测时出现信息穿越。</div>
-            <div className="rounded-xl border border-zinc-200 px-4 py-3">4. 赛后再运行回测，关注样本量、准确率、Logloss 和 Brier。</div>
-          </div>
+        <SurfaceCard title="操作顺序">
+          <ol className="divide-y divide-zinc-100 text-sm text-zinc-600">
+            {[
+              "刷新状态，确认数据库与环境变量正常。",
+              "导入比赛数据，再按需拉取赔率。",
+              "赛前保存预测快照，避免回测时信息穿越。",
+              "赛后运行回测，关注样本量、准确率、Logloss 与 Brier。",
+            ].map((text, index) => (
+              <li key={text} className="flex gap-3 py-2.5 first:pt-0 last:pb-0">
+                <span className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-zinc-100 text-xs text-zinc-600">
+                  {index + 1}
+                </span>
+                <span className="leading-5">{text}</span>
+              </li>
+            ))}
+          </ol>
         </SurfaceCard>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <SurfaceCard title="导入比赛数据" description="导入成功后，比赛页和预测页都会同步可用。">
+        <SurfaceCard title="导入比赛数据" description="导入成功后比赛页与预测页同步可用。">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-2 text-sm text-zinc-600">
-              <span>date_from</span>
+              <span>开始日期</span>
               <input
                 type="date"
                 value={dateFrom}
                 onChange={(e) => setDateFrom(e.target.value)}
-                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
+                className="rounded-md border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
               />
             </label>
             <label className="grid gap-2 text-sm text-zinc-600">
-              <span>date_to</span>
+              <span>结束日期</span>
               <input
                 type="date"
                 value={dateTo}
                 onChange={(e) => setDateTo(e.target.value)}
-                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
+                className="rounded-md border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
               />
             </label>
           </div>
           {!coreEnvOk ? (
-            <div className="mt-4 rounded-xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-              需要先配置 `SUPABASE_URL` 与 `SUPABASE_SERVICE_ROLE_KEY`，否则无法写入数据库。
+            <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2.5 text-xs text-red-700">
+              需要先配置 SUPABASE_URL 与 SUPABASE_SERVICE_ROLE_KEY，否则无法写入数据库。
             </div>
           ) : !status?.env.hasFootballDataKey ? (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              当前没有 `FOOTBALL_DATA_API_KEY`，因此“football-data 导入”不可用。
-              <span className="ml-1">
-                不过你现在的主流程（体彩赛程 + 本地分析产物）仍然可以正常使用。
-              </span>
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+              未配置 FOOTBALL_DATA_API_KEY，football-data 导入不可用；体彩赛程 + 本地分析产物主流程不受影响。
             </div>
           ) : null}
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             <ActionButton onClick={ingest} disabled={loading || !canIngestFootballData}>
               {loading ? "导入中…" : "开始导入"}
             </ActionButton>
           </div>
         </SurfaceCard>
 
-        <SurfaceCard title="拉取赔率" description="赔率写入后，预测页的价值投注说明会更完整。">
+        <SurfaceCard title="拉取赔率" description="赔率写入后，预测页的价值判断更完整。">
           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
             <label className="grid gap-2 text-sm text-zinc-600">
-              <span>date</span>
+              <span>日期</span>
               <input
                 type="date"
                 value={oddsDate}
                 onChange={(e) => setOddsDate(e.target.value)}
-                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
+                className="rounded-md border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
               />
             </label>
             <ActionButton onClick={ingestOdds} disabled={loading || !status?.env?.hasApiFootballKey}>
@@ -353,89 +342,73 @@ export default function SetupPage() {
             </ActionButton>
           </div>
           {!status?.env?.hasApiFootballKey ? (
-            <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-              当前没有 `API_FOOTBALL_KEY`，赔率拉取能力不可用。
+            <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2.5 text-xs text-amber-800">
+              未配置 API_FOOTBALL_KEY，赔率拉取不可用。
             </div>
           ) : null}
         </SurfaceCard>
       </div>
 
       <div className="grid gap-6 xl:grid-cols-2">
-        <SurfaceCard title="保存预测快照" description="赛前先保存，给后续回测提供真实的赛前视角。">
+        <SurfaceCard title="保存预测快照" description="回测应基于赛前快照，而不是事后重新生成的预测。">
           <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
             <label className="grid gap-2 text-sm text-zinc-600">
-              <span>date</span>
+              <span>日期</span>
               <input
                 type="date"
                 value={snapshotDate}
                 onChange={(e) => setSnapshotDate(e.target.value)}
-                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
+                className="rounded-md border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
               />
             </label>
             <ActionButton onClick={snapshotPredictions} disabled={loading}>
               {loading ? "保存中…" : "保存快照"}
             </ActionButton>
           </div>
-          <div className="mt-4 text-sm text-zinc-500">
-            回测应该基于赛前快照，而不是事后重新生成的预测结果。
-          </div>
         </SurfaceCard>
 
-        <SurfaceCard title="运行回测" description="赛后核对样本量和概率质量，重点看 Logloss 与 Brier。">
+        <SurfaceCard title="运行回测" description="赛后核对样本量与概率质量。">
           <div className="grid gap-3 sm:grid-cols-2">
             <label className="grid gap-2 text-sm text-zinc-600">
-              <span>date_from</span>
+              <span>开始日期</span>
               <input
                 type="date"
                 value={btFrom}
                 onChange={(e) => setBtFrom(e.target.value)}
-                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
+                className="rounded-md border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
               />
             </label>
             <label className="grid gap-2 text-sm text-zinc-600">
-              <span>date_to</span>
+              <span>结束日期</span>
               <input
                 type="date"
                 value={btTo}
                 onChange={(e) => setBtTo(e.target.value)}
-                className="rounded-xl border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
+                className="rounded-md border border-zinc-200 bg-white px-3 py-2 outline-none focus:border-zinc-400"
               />
             </label>
           </div>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-3 flex flex-wrap gap-2">
             <ActionButton onClick={runBacktest} disabled={loading}>
               {loading ? "回测中…" : "开始回测"}
             </ActionButton>
           </div>
           {btResult?.summary ? (
-            <div className="mt-4 grid gap-3 sm:grid-cols-2">
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
-                样本数 n
-                <div className="mt-1 text-xl font-semibold text-zinc-950">{btResult.summary.n}</div>
-              </div>
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
-                Accuracy
-                <div className="mt-1 text-xl font-semibold text-zinc-950">
-                  {btResult.summary.accuracy != null ? `${(btResult.summary.accuracy * 100).toFixed(1)}%` : "-"}
-                </div>
-              </div>
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
-                Logloss
-                <div className="mt-1 text-xl font-semibold text-zinc-950">
-                  {btResult.summary.logloss != null ? btResult.summary.logloss.toFixed(4) : "-"}
-                </div>
-              </div>
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm text-zinc-700">
-                Brier
-                <div className="mt-1 text-xl font-semibold text-zinc-950">
-                  {btResult.summary.brier != null ? btResult.summary.brier.toFixed(4) : "-"}
-                </div>
-              </div>
+            <div className="mt-3">
+              <StatStrip
+                items={[
+                  { label: "样本数 n", value: String(btResult.summary.n) },
+                  {
+                    label: "Accuracy",
+                    value: btResult.summary.accuracy != null ? `${(btResult.summary.accuracy * 100).toFixed(1)}%` : "-",
+                  },
+                  { label: "Logloss", value: btResult.summary.logloss != null ? btResult.summary.logloss.toFixed(4) : "-" },
+                  { label: "Brier", value: btResult.summary.brier != null ? btResult.summary.brier.toFixed(4) : "-" },
+                ]}
+              />
+              <div className="mt-2 text-xs text-zinc-500">n = 0 通常表示还没有赛前快照，或比赛结果未更新为 FINISHED。</div>
             </div>
           ) : null}
-          <div className="mt-4 text-sm text-zinc-500">
-            如果 `n = 0`，通常说明还没有赛前快照，或者比赛结果尚未更新为 `FINISHED`。
-          </div>
         </SurfaceCard>
       </div>
     </div>

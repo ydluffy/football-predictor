@@ -8,11 +8,10 @@ import { getFixtureLedger, getFixtures, getMarketIntel, getPredictionsByDate, in
 import { MatchDetailCard } from "@/components/MatchDetailCard";
 import {
   ActionButton,
+  Chip,
   EmptyState,
-  MetricCard,
   PageIntro,
-  PrimaryLink,
-  SecondaryLink,
+  StatStrip,
   StatusBadge,
   SurfaceCard,
 } from "@/components/Workbench";
@@ -21,11 +20,11 @@ import { competitionNameZh, formatLocalTimeFromUtc, teamNameZh } from "@/lib/zh"
 import { evaluateSportteryHandicap } from "@/lib/handicap";
 
 const SIGNAL_FILTERS = [
-  { id: "movement", label: "有盘口变化", hint: "存在外盘初盘和最新盘口信息" },
-  { id: "upgrade_divergence", label: "升盘背离", hint: "升盘但价格未同步支持" },
-  { id: "downgrade", label: "存在退盘", hint: "盘口出现退盘信号" },
-  { id: "aligned_only", label: "时间已对齐", hint: "体彩与外盘满足时间对齐" },
-  { id: "large_gap", label: "内外盘差较大", hint: "内外盘差值绝对值不小于 0.5" },
+  { id: "movement", label: "有盘口变化" },
+  { id: "upgrade_divergence", label: "升盘背离" },
+  { id: "downgrade", label: "退盘" },
+  { id: "aligned_only", label: "时间已对齐" },
+  { id: "large_gap", label: "内外盘差较大" },
 ] as const;
 
 type SignalFilterId = (typeof SIGNAL_FILTERS)[number]["id"];
@@ -70,28 +69,21 @@ function getLeagueBadgeClass(name?: string | null) {
   if (text.includes("瑞超")) return "bg-sky-600 text-white";
   if (text.includes("西甲")) return "bg-slate-700 text-white";
   if (text.includes("法甲")) return "bg-blue-600 text-white";
-  return "bg-zinc-600 text-white";
+  return "bg-zinc-500 text-white";
 }
 
 function getRiskHint(pred?: Prediction | null, intel?: FixtureMarketIntel | null) {
-  // 1) 体彩分析产物里已有“风险备注”时，优先使用（最接近票面表达）
   if (pred?.risk_note) return pred.risk_note;
-
-  // 2) 没有任何市场/对齐数据，说明 market-intel 还没同步到这场
-  if (!intel) return "暂无市场信号数据";
-
-  // 3) 有明确风险信号时，给出明确结论
+  if (!intel) return "暂无市场信号";
   if (intel.movement?.line_upgrade_without_price_support) return "升盘背离，注意热度风险";
   if (intel.movement?.line_downgrade) return "存在退盘，谨防方向反复";
   if (Math.abs(intel.alignment?.sporttery_minus_outer_handicap_median ?? 0) >= 0.5) {
     const diff = intel.alignment?.sporttery_minus_outer_handicap_median ?? 0;
-    return `内外盘差 ${diff > 0 ? "+" : ""}${diff.toFixed(2)}，注意盘口分歧`;
+    return `内外盘差 ${diff > 0 ? "+" : ""}${diff.toFixed(2)}`;
   }
-
-  // 4) 有数据但没有触发明显风险时，不要用“常规观察”这种像模板的词
-  if (intel.alignment?.time_aligned) return "无显著风险信号（已完成时间对齐）";
-  if (intel.movement) return "无显著风险信号（存在盘口变化）";
-  return "无显著风险信号";
+  if (intel.alignment?.time_aligned) return "无显著风险（已对齐）";
+  if (intel.movement) return "无显著风险（有盘口变化）";
+  return "无显著风险";
 }
 
 function getGoalsScoreView(pred?: Prediction | null) {
@@ -119,34 +111,32 @@ function getOutcomeLabel(pred?: Prediction | null) {
 
 // 官方 SPF 赔率变化展示：主赔率初→终 + 变标记，平客变化作次行
 function renderOddsChange(change?: OddsChangeInfo | null) {
-  if (!change) return <span className="text-sm text-zinc-400">—</span>;
+  if (!change) return <span className="text-sm text-zinc-300">—</span>;
   const [beforeHome, beforeDraw, beforeAway] = change.before;
   const [afterHome, afterDraw, afterAway] = change.after;
-  if (beforeHome == null && afterHome == null) return <span className="text-sm text-zinc-400">—</span>;
+  if (beforeHome == null && afterHome == null) return <span className="text-sm text-zinc-300">—</span>;
   const fmt = (value: number | null) => (value == null ? "-" : value.toFixed(2));
   const homeDrop = beforeHome != null && afterHome != null && afterHome < beforeHome;
   const homeRise = beforeHome != null && afterHome != null && afterHome > beforeHome;
   return (
     <div>
-      <div className="flex items-center gap-1.5 text-sm">
+      <div className="flex items-center gap-1.5 text-sm tabular-nums">
         <span
           className={
             change.changed
               ? homeDrop
                 ? "font-semibold text-red-600"
                 : homeRise
-                  ? "font-semibold text-emerald-700"
+                  ? "font-semibold text-emerald-600"
                   : "font-semibold text-zinc-800"
               : "text-zinc-700"
           }
         >
           {fmt(beforeHome)}→{fmt(afterHome)}
         </span>
-        {change.changed ? (
-          <span className="inline-flex rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-800">变</span>
-        ) : null}
+        {change.changed ? <Chip tone="warning">变</Chip> : null}
       </div>
-      <div className="mt-1 text-xs text-zinc-500">
+      <div className="mt-0.5 text-xs tabular-nums text-zinc-400">
         平 {fmt(beforeDraw)}→{fmt(afterDraw)} · 客 {fmt(beforeAway)}→{fmt(afterAway)}
       </div>
     </div>
@@ -169,7 +159,6 @@ function FixturesPageContent() {
   const [fixtureLedgerMap, setFixtureLedgerMap] = useState<Map<number, FixtureLedgerRow>>(new Map());
   const [lastUpdatedAt, setLastUpdatedAt] = useState<string | null>(null);
   const [tableCollapsed, setTableCollapsed] = useState(false);
-  const [filtersOpen, setFiltersOpen] = useState(false);
 
   const selectedFixtureId = useMemo(() => {
     const raw = searchParams.get("fixtureId");
@@ -280,13 +269,6 @@ function FixturesPageContent() {
       ).size,
     [rows],
   );
-  const liveCount = useMemo(
-    () =>
-      rows.filter((r) =>
-        ["IN_PLAY", "LIVE", "PAUSED"].includes((r.status || "").toUpperCase()),
-      ).length,
-    [rows],
-  );
   const selectedFixture = useMemo(
     () => rows.find((row) => row.fixture_id === selectedFixtureId) || null,
     [rows, selectedFixtureId],
@@ -369,47 +351,36 @@ function FixturesPageContent() {
     return analysisRuns.filter((run) => run.scope_match_numbers.includes(matchNumber));
   }, [analysisRuns, date, rows, selectedFixtureSummary]);
 
+  const hasActiveFilter = activeLeagues.length > 0 || activeSignals.length > 0;
+
+  function toggleLeague(league: string) {
+    replaceParams((params) => {
+      const current = new Set(activeLeagues);
+      if (current.has(league)) current.delete(league);
+      else current.add(league);
+      if (current.size > 0) params.set("leagues", [...current].join(","));
+      else params.delete("leagues");
+    });
+  }
+
+  function toggleSignal(id: SignalFilterId) {
+    replaceParams((params) => {
+      const current = new Set(activeSignals);
+      if (current.has(id)) current.delete(id);
+      else current.add(id);
+      if (current.size > 0) params.set("signals", [...current].join(","));
+      else params.delete("signals");
+    });
+  }
+
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-4">
       <PageIntro
         eyebrow="竞彩"
         title="足球竞猜赛程"
-        description="参考体彩赛程页的阅读方式：先用紧凑筛选定位赛事，再在主表直接查看比赛编号、开赛时间、胜平负/让球方向、进球比分与风险。"
+        description={`比赛编号日期 ${date.replace(/-/g, "").slice(2)} · 数据更新 ${formatUpdatedAt(lastUpdatedAt)}`}
         actions={
           <>
-            <PrimaryLink href={`/predictions?date=${date}`}>查看预测</PrimaryLink>
-            <SecondaryLink href="/review">查看复盘</SecondaryLink>
-          </>
-        }
-      />
-
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="当日比赛" value={busy ? "…" : String(rows.length)} hint="当前选择日期的比赛总数" />
-        <MetricCard label="已预测" value={busy ? "…" : String(predictedCount)} hint="已经生成胜平负结论的场次" />
-        <MetricCard label="联赛覆盖" value={busy ? "…" : String(competitionsCount)} hint="当日涉及的赛事数量" />
-        <MetricCard
-          label="多次分析"
-          value={busy ? "…" : String(multiRunFixtureCount)}
-          hint={activeSignals.length > 0 ? "当前已按盘口信号筛选" : `进行中 ${liveCount} 场，比分回传 ${matchesWithScore}/${rows.length}`}
-        />
-      </section>
-
-      {error ? (
-        <section className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          赛程加载失败：{error}
-        </section>
-      ) : null}
-      {predictionError ? (
-        <section className="rounded-2xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          预测暂未加载：{predictionError}
-        </section>
-      ) : null}
-
-      <SurfaceCard
-        title="赛事筛选"
-        description="筛选区尽量收紧，比赛信息主表优先展示；需要更多筛选时再展开。"
-        action={
-          <div className="flex flex-wrap items-center gap-2">
             <input
               type="date"
               value={date}
@@ -417,451 +388,323 @@ function FixturesPageContent() {
                 setDate(e.target.value);
                 replaceParams((params) => {
                   params.set("date", e.target.value);
-                  params.delete("league");
                   params.delete("fixtureId");
                 });
               }}
-              className="rounded-xl border border-zinc-200 bg-white px-3 py-2 text-sm outline-none focus:border-zinc-400"
+              className="rounded-md border border-zinc-200 bg-white px-2.5 py-1.5 text-sm outline-none focus:border-zinc-400"
             />
             <ActionButton tone="secondary" onClick={load} disabled={busy}>
               刷新
             </ActionButton>
             <ActionButton onClick={ingest} disabled={busy}>
-              {busy ? "处理中…" : "导入当日赛程"}
+              {busy ? "处理中…" : "导入赛程"}
             </ActionButton>
-          </div>
+          </>
         }
-      >
-        {selectedFixture ? (
-          <div className="mb-4">
-            <MatchDetailCard
-              fixture={selectedFixture}
-              prediction={selectedPrediction}
-              marketIntel={marketIntel.get(selectedFixture.fixture_id) || null}
-              actions={
-                <>
-                  <Link
-                    href={`/fixtures/${selectedFixture.fixture_id}?date=${date}`}
-                    className="rounded-xl bg-zinc-900 px-4 py-2 text-sm font-medium text-white"
-                  >
-                    进入详情页
-                  </Link>
-                  <Link
-                    href={`/predictions?date=${date}&fixtureId=${selectedFixture.fixture_id}`}
-                    className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
-                  >
-                    在预测页查看这场比赛
-                  </Link>
-                  <button
-                    onClick={() =>
-                      replaceParams((params) => {
-                        params.set("date", date);
-                        params.delete("fixtureId");
-                      })
-                    }
-                    className="rounded-xl border border-zinc-200 px-4 py-2 text-sm text-zinc-700 hover:bg-zinc-50"
-                  >
-                    关闭详情
-                  </button>
-                </>
-              }
-            />
-            {selectedFixtureRuns.length > 0 ? (
-              <div className="mt-3 rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-                <div className="text-sm font-semibold text-zinc-950">这场比赛今天的分析轨迹</div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  {selectedFixtureRuns.map((run) => (
-                    <StatusBadge key={`${run.stage}-${run.analysis_at || "na"}-${run.task_key || "task"}`} tone={run.stage === "final" ? "success" : "warning"}>
-                      {run.stage_label} · {formatUpdatedAt(run.analysis_at)}
-                    </StatusBadge>
-                  ))}
-                </div>
-              </div>
-            ) : null}
-          </div>
-        ) : null}
-        <div className="grid gap-4">
-          <section className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3">
-            <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
-              <div className="text-zinc-700">
-                查询结果：共 <span className="font-semibold text-zinc-950">{filteredRows.length}</span> 场赛事符合条件
-                <span className="ml-2 text-zinc-500">更新时间：{formatUpdatedAt(lastUpdatedAt)}</span>
-              </div>
-              <div className="flex flex-wrap items-center gap-2">
-                <div className="relative">
-                  <button
-                    onClick={() => setFiltersOpen((v) => !v)}
-                    className="inline-flex items-center gap-1 rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
-                  >
-                    赛事筛选
-                    <span className="text-zinc-400">{filtersOpen ? "▴" : "▾"}</span>
-                  </button>
+      />
 
-                  {filtersOpen ? (
-                    <div className="absolute left-0 top-10 z-30 w-[680px] max-w-[calc(100vw-2rem)] rounded-2xl border border-zinc-200 bg-white p-4 shadow-xl">
-                      <div className="flex items-start justify-between gap-3">
-                        <div>
-                          <div className="text-sm font-semibold text-zinc-900">赛事筛选</div>
-                          <div className="mt-1 text-xs text-zinc-500">默认“全部”，按需勾选；点右上角可关闭。</div>
-                        </div>
-                        <button
-                          onClick={() => setFiltersOpen(false)}
-                          className="inline-flex h-7 w-7 items-center justify-center rounded-lg border border-zinc-200 text-zinc-600 hover:bg-zinc-50"
-                          aria-label="关闭筛选"
-                        >
-                          ×
-                        </button>
-                      </div>
+      <StatStrip
+        items={[
+          { label: "当日比赛", value: busy ? "…" : String(rows.length), hint: `比分回传 ${matchesWithScore}/${rows.length}` },
+          {
+            label: "已预测",
+            value: busy ? "…" : String(predictedCount),
+            hint: predictedCount < rows.length ? `待补 ${rows.length - predictedCount} 场` : "已全覆盖",
+            tone: predictedCount < rows.length ? "warning" : "success",
+          },
+          { label: "联赛覆盖", value: busy ? "…" : String(competitionsCount) },
+          {
+            label: "多次分析",
+            value: busy ? "…" : String(multiRunFixtureCount),
+            hint: registry && registry.total_tasks > 0 ? `当日任务 ${registry.completed_tasks}/${registry.total_tasks}` : "暂无编排任务",
+          },
+        ]}
+      />
 
-                      <div className="mt-4 grid gap-5">
-                        <div>
-                          <div className="text-xs font-semibold text-zinc-700">按赛事筛选</div>
-                          <div className="mt-2 grid grid-cols-3 gap-2">
-                            <label className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-50">
-                              <input
-                                type="checkbox"
-                                checked={activeLeagues.length === 0}
-                                onChange={() =>
-                                  replaceParams((params) => {
-                                    params.delete("leagues");
-                                  })
-                                }
-                                className="h-4 w-4 rounded border-zinc-300"
-                              />
-                              <span className="text-sm text-zinc-700">全部</span>
-                            </label>
-                            {leagueOptions.map((league) => {
-                              const active = activeLeagues.includes(league);
-                              return (
-                                <label
-                                  key={league}
-                                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-50"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={active}
-                                    onChange={() =>
-                                      replaceParams((params) => {
-                                        const current = new Set(activeLeagues);
-                                        if (active) current.delete(league);
-                                        else current.add(league);
-                                        if (current.size > 0) params.set("leagues", [...current].join(","));
-                                        else params.delete("leagues");
-                                      })
-                                    }
-                                    className="h-4 w-4 rounded border-zinc-300"
-                                  />
-                                  <span className="text-sm text-zinc-700">{league}</span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
+      {error ? (
+        <section className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+          赛程加载失败：{error}
+        </section>
+      ) : null}
+      {predictionError ? (
+        <section className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-sm text-amber-800">
+          预测暂未加载：{predictionError}
+        </section>
+      ) : null}
 
-                        <div>
-                          <div className="text-xs font-semibold text-zinc-700">按盘口信号筛选</div>
-                          <div className="mt-2 grid grid-cols-3 gap-2">
-                            <label className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-50">
-                              <input
-                                type="checkbox"
-                                checked={activeSignals.length === 0}
-                                onChange={() =>
-                                  replaceParams((params) => {
-                                    params.delete("signals");
-                                  })
-                                }
-                                className="h-4 w-4 rounded border-zinc-300"
-                              />
-                              <span className="text-sm text-zinc-700">全部</span>
-                            </label>
-                            {SIGNAL_FILTERS.map((filter) => {
-                              const active = activeSignals.includes(filter.id);
-                              const count = signalCounts.get(filter.id) || 0;
-                              return (
-                                <label
-                                  key={filter.id}
-                                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-zinc-50"
-                                >
-                                  <input
-                                    type="checkbox"
-                                    checked={active}
-                                    onChange={() =>
-                                      replaceParams((params) => {
-                                        const current = new Set(activeSignals);
-                                        if (active) current.delete(filter.id);
-                                        else current.add(filter.id);
-                                        if (current.size > 0) params.set("signals", [...current].join(","));
-                                        else params.delete("signals");
-                                      })
-                                    }
-                                    className="h-4 w-4 rounded border-zinc-300"
-                                  />
-                                  <span className="text-sm text-zinc-700">
-                                    {filter.label}
-                                    {count > 0 ? <span className="ml-1 text-xs text-zinc-400">({count})</span> : null}
-                                  </span>
-                                </label>
-                              );
-                            })}
-                          </div>
-                        </div>
-
-                        {(activeSignals.length > 0 || activeLeagues.length > 0) && (
-                          <div className="flex items-center justify-between gap-3 rounded-xl border border-zinc-200 bg-zinc-50 px-3 py-2">
-                            <div className="text-xs text-zinc-600">
-                              当前已筛选：
-                              {activeLeagues.length > 0 ? ` 联赛 ${activeLeagues.length} 项` : ""}
-                              {activeLeagues.length > 0 && activeSignals.length > 0 ? "；" : ""}
-                              {activeSignals.length > 0 ? ` 信号 ${activeSignals.length} 项` : ""}
-                            </div>
-                            <button
-                              onClick={() =>
-                                replaceParams((params) => {
-                                  params.delete("leagues");
-                                  params.delete("signals");
-                                })
-                              }
-                              className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
-                            >
-                              清空筛选
-                            </button>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  ) : null}
-                </div>
-
-                <button
-                  onClick={() => setTableCollapsed((v) => !v)}
-                  className="rounded-lg border border-zinc-200 bg-white px-3 py-1.5 text-sm text-zinc-700 hover:bg-zinc-50"
-                >
-                  {tableCollapsed ? "显示" : "隐藏"}
-                </button>
-              </div>
+      {selectedFixture ? (
+        <SurfaceCard
+          title="页内详情"
+          action={
+            <div className="flex flex-wrap items-center gap-2">
+              <Link
+                href={`/fixtures/${selectedFixture.fixture_id}?date=${date}`}
+                className="rounded-md bg-zinc-900 px-3 py-1.5 text-sm font-medium text-white transition hover:bg-zinc-700"
+              >
+                进入详情页
+              </Link>
+              <Link
+                href={`/predictions?date=${date}&fixtureId=${selectedFixture.fixture_id}`}
+                className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-50"
+              >
+                在预测页查看
+              </Link>
+              <button
+                type="button"
+                onClick={() =>
+                  replaceParams((params) => {
+                    params.set("date", date);
+                    params.delete("fixtureId");
+                  })
+                }
+                className="rounded-md border border-zinc-200 px-3 py-1.5 text-sm text-zinc-600 transition hover:bg-zinc-50"
+              >
+                关闭
+              </button>
             </div>
+          }
+        >
+          <MatchDetailCard
+            fixture={selectedFixture}
+            prediction={selectedPrediction}
+            marketIntel={marketIntel.get(selectedFixture.fixture_id) || null}
+          />
+        </SurfaceCard>
+      ) : null}
 
-          </section>
-
-          {rows.length === 0 ? (
-            <EmptyState text="当前日期还没有赛程数据。可以先点击右上角“导入当日赛程”，再回来核对比赛列表。" />
-          ) : filteredCount === 0 ? (
-            <EmptyState text="当前日期有比赛，但没有符合所选盘口信号的场次。你可以清空筛选，或切换到其他日期继续查看。" />
-          ) : tableCollapsed ? (
-            <div className="rounded-2xl border border-zinc-200 bg-white px-4 py-4 text-sm text-zinc-600">
-              已隐藏比赛信息栏。点击上方“显示”恢复列表。
-            </div>
-          ) : (
-            <section className="grid gap-3">
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm">
-                <span className="font-semibold text-orange-600">{getWeekLabel(date)} {date}</span>
-                <span className="ml-2 text-zinc-700">共 {filteredRows.length} 场比赛</span>
-                <span className="ml-2 text-zinc-400">(比赛编号日期：{date.replace(/-/g, "").slice(2)})</span>
-                {registry && registry.total_tasks > 0 ? (
-                  <span className="ml-3 text-zinc-500">
-                    当日任务 {registry.completed_tasks}/{registry.total_tasks}
-                    {registry.next_task.run_at ? ` · 下一步 ${formatUpdatedAt(registry.next_task.run_at)} ${registry.next_task.key || ""}` : " · 当日任务已全部完成"}
-                  </span>
-                ) : null}
-              </div>
-              <div className="overflow-x-auto rounded-2xl border border-zinc-200">
-                <table className="min-w-[1480px] w-full border-separate border-spacing-0 text-sm">
-                  <thead className="sticky top-0 z-10 bg-slate-100 text-xs text-slate-600">
-                    <tr>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">赛事编号</th>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">联赛</th>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">主队 vs 客队</th>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">比赛开始时间</th>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">官方赔率(初→终)</th>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">分析批次</th>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">比赛资讯</th>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">预测状态</th>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">胜平负预测</th>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">让球预测</th>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">进球/比分</th>
-                      <th className="border-b border-zinc-200 px-3 py-3 text-left">风险</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {filteredRows.map((row, index) => {
-                      const leagueName = row.competition_name_zh || competitionNameZh(row.competition_code, row.competition_name);
-                      const prediction = predictions.get(row.fixture_id);
-                      const fixtureSummary = fixtureLedgerMap.get(row.fixture_id);
-                      const intel = marketIntel.get(row.fixture_id);
-                      const hasPrediction = Boolean(prediction);
-                      const handicapValue =
-                        intel?.alignment?.sporttery_handicap ?? prediction?.sporttery_handicap ?? null;
-                      const handicapEvaluation = evaluateSportteryHandicap(prediction, handicapValue);
-                      return (
-                        <tr key={row.fixture_id} className="bg-white hover:bg-zinc-50">
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top font-medium text-zinc-900">
-                            {getSportteryCode(row.fixture_id, date, index)}
-                          </td>
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top">
-                            <span className={`inline-flex rounded-lg px-3 py-1 text-xs font-semibold ${getLeagueBadgeClass(leagueName)}`}>
-                              {leagueName}
-                            </span>
-                          </td>
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top">
-                            <div className="font-semibold text-zinc-950">
-                              {row.home_team_name_zh || teamNameZh(row.home_team_name)} <span className="mx-2 text-zinc-400">VS</span>{" "}
-                              {row.away_team_name_zh || teamNameZh(row.away_team_name)}
-                            </div>
-                            {row.home_score != null && row.away_score != null ? (
-                              <div className="mt-1 text-xs text-zinc-500">当前比分 {row.home_score}:{row.away_score}</div>
-                            ) : null}
-                          </td>
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
-                            {row.kickoff_time_zh || formatLocalTimeFromUtc(row.utc_date, "Asia/Shanghai")}
-                          </td>
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top">{renderOddsChange(fixtureSummary?.odds_change)}</td>
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top">
-                            {fixtureSummary?.analysis_run_count ? (
-                              <div className="max-w-[180px]">
-                                <div className="font-semibold text-zinc-900">{fixtureSummary.analysis_run_count} 次</div>
-                                <div className="mt-1 flex flex-wrap gap-1">
-                                  {fixtureSummary.analysis_stage_labels.map((label) => (
-                                    <StatusBadge key={`${row.fixture_id}-${label}`} tone={/终版/.test(label) ? "success" : "warning"}>
-                                      {label}
-                                    </StatusBadge>
-                                  ))}
-                                </div>
-                                <div className="mt-1 text-xs text-zinc-500">最新 {formatUpdatedAt(fixtureSummary.latest_analysis_at)}</div>
-                              </div>
-                            ) : (
-                              <span className="text-sm text-zinc-500">今日未入分析批次</span>
-                            )}
-                          </td>
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <Link
-                                href={`/fixtures/${row.fixture_id}?date=${date}&view=analysis`}
-                                className="text-sm text-blue-600 hover:text-blue-700"
-                              >
-                                析
-                              </Link>
-                              <Link
-                                href={`/fixtures/${row.fixture_id}?date=${date}&view=news`}
-                                className="text-sm text-blue-600 hover:text-blue-700"
-                              >
-                                讯
-                              </Link>
-                            </div>
-                          </td>
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top">
-                            <StatusBadge tone={hasPrediction ? "success" : "neutral"}>{hasPrediction ? "已预测" : "未预测"}</StatusBadge>
-                          </td>
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">{getOutcomeLabel(prediction)}</td>
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top">
-                            {handicapEvaluation ? (
-                              <div className="flex flex-wrap items-center gap-2 text-sm text-zinc-800">
-                                <span className="font-semibold">{handicapEvaluation.topLabel}</span>
-                                <span className="inline-flex rounded-md bg-emerald-50 px-2 py-0.5 text-xs font-semibold text-emerald-800">
-                                  {handicapEvaluation.compactText}
-                                </span>
-                                <span className="text-xs text-zinc-500">
-                                  {Math.round(handicapEvaluation.topProbability * 100)}%
-                                </span>
-                              </div>
-                            ) : (
-                              <span className="text-sm text-zinc-500">—</span>
-                            )}
-                          </td>
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top">
-                            <div className="max-w-[220px] text-zinc-700">{getGoalsScoreView(prediction)}</div>
-                          </td>
-                          <td className="border-b border-zinc-200 px-3 py-3 align-top">
-                            <div className="max-w-[220px] text-zinc-700">{getRiskHint(prediction, intel)}</div>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            </section>
-          )}
+      {selectedFixture && selectedFixtureRuns.length > 0 ? (
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-zinc-200 bg-white px-4 py-3">
+          <span className="text-xs font-medium text-zinc-500">今日分析轨迹</span>
+          {selectedFixtureRuns.map((run) => (
+            <StatusBadge key={`${run.stage}-${run.analysis_at || "na"}-${run.task_key || "task"}`} tone={run.stage === "final" ? "success" : "warning"}>
+              {run.stage_label} · {formatUpdatedAt(run.analysis_at)}
+            </StatusBadge>
+          ))}
         </div>
-        {rows.length > 0 && matchesWithScore === 0 ? (
-          <div className="mt-4 text-xs text-zinc-500">提示：当前日期比赛多数尚未结束，比分为空属于正常情况。</div>
-        ) : null}
-      </SurfaceCard>
+      ) : null}
 
       <SurfaceCard
-        title="当日预测流水"
-        description="按销售日展示今天实际跑过的分析批次。先看有没有跑过、几点跑的、出了几套方案，再决定进哪一场比赛做细看。"
+        title="赛程"
+        action={
+          <button
+            onClick={() => setTableCollapsed((v) => !v)}
+            className="rounded-md border border-zinc-200 bg-white px-2.5 py-1 text-xs text-zinc-600 hover:bg-zinc-50"
+          >
+            {tableCollapsed ? "显示列表" : "隐藏列表"}
+          </button>
+        }
       >
-        {analysisRuns.length === 0 ? (
-          <EmptyState text="当前销售日还没有分析批次记录。通常表示今天只同步了赛程，还没有把早盘/终版分析结果入库。" />
-        ) : (
-          <div className="grid gap-4">
-            <div className="grid gap-3 md:grid-cols-3">
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-                <div className="text-xs text-zinc-500">分析批次数</div>
-                <div className="mt-1 text-2xl font-semibold text-zinc-950">{analysisRuns.length}</div>
-                <div className="mt-1 text-xs text-zinc-500">同一天多次修正会连续展示在这里</div>
-              </div>
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-                <div className="text-xs text-zinc-500">产出方案数</div>
-                <div className="mt-1 text-2xl font-semibold text-zinc-950">{totalPlanCount}</div>
-                <div className="mt-1 text-xs text-zinc-500">统计各批次真实方案行数</div>
-              </div>
-              <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-                <div className="text-xs text-zinc-500">累计投注额</div>
-                <div className="mt-1 text-2xl font-semibold text-zinc-950">{totalStake.toFixed(2)}</div>
-                <div className="mt-1 text-xs text-zinc-500">用于快速看当天操盘强度</div>
-              </div>
+        <div className="grid gap-3">
+          <div className="rounded-lg border border-zinc-200 bg-zinc-50/60 px-3 py-2.5">
+            <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1.5">
+              <span className="mr-1 text-xs font-medium text-zinc-400">联赛</span>
+              <Chip active={activeLeagues.length === 0} onClick={() => replaceParams((params) => params.delete("leagues"))}>
+                全部
+              </Chip>
+              {leagueOptions.map((league) => (
+                <Chip key={league} active={activeLeagues.includes(league)} onClick={() => toggleLeague(league)}>
+                  {league}
+                </Chip>
+              ))}
             </div>
+            <div className="mt-2 flex flex-wrap items-center gap-x-1.5 gap-y-1.5 border-t border-zinc-200 pt-2">
+              <span className="mr-1 text-xs font-medium text-zinc-400">盘口信号</span>
+              <Chip active={activeSignals.length === 0} onClick={() => replaceParams((params) => params.delete("signals"))}>
+                全部
+              </Chip>
+              {SIGNAL_FILTERS.map((filter) => {
+                const count = signalCounts.get(filter.id) || 0;
+                return (
+                  <Chip key={filter.id} active={activeSignals.includes(filter.id)} onClick={() => toggleSignal(filter.id)}>
+                    {filter.label}
+                    {count > 0 ? <span className="text-zinc-400"> {count}</span> : null}
+                  </Chip>
+                );
+              })}
+              {hasActiveFilter ? (
+                <button
+                  onClick={() =>
+                    replaceParams((params) => {
+                      params.delete("leagues");
+                      params.delete("signals");
+                    })
+                  }
+                  className="ml-1 text-xs font-medium text-zinc-500 underline hover:text-zinc-900"
+                >
+                  清空筛选
+                </button>
+              ) : null}
+              <span className="ml-auto text-xs text-zinc-500">
+                命中 <span className="font-semibold text-zinc-900">{filteredCount}</span> / {rows.length} 场
+              </span>
+            </div>
+          </div>
 
-            <div className="overflow-x-auto rounded-2xl border border-zinc-200">
-              <table className="min-w-full border-separate border-spacing-0 text-sm">
-                <thead className="bg-zinc-50 text-xs text-zinc-500">
+          {rows.length === 0 ? (
+            <EmptyState text="当前日期还没有赛程数据，可点右上角“导入赛程”。" />
+          ) : filteredCount === 0 ? (
+            <EmptyState text="没有符合当前筛选条件的比赛，可清空筛选或切换日期。" />
+          ) : tableCollapsed ? (
+            <EmptyState text="已隐藏比赛列表，点击右上角“显示列表”恢复。" />
+          ) : (
+            <div className="overflow-x-auto rounded-lg border border-zinc-200">
+              <table className="w-full min-w-[1080px] border-separate border-spacing-0 text-sm">
+                <thead className="sticky top-0 z-10 bg-zinc-50 text-xs text-zinc-500">
                   <tr>
-                    <th className="border-b border-zinc-200 px-3 py-3 text-left">批次</th>
-                    <th className="border-b border-zinc-200 px-3 py-3 text-left">分析时间</th>
-                    <th className="border-b border-zinc-200 px-3 py-3 text-left">任务</th>
-                    <th className="border-b border-zinc-200 px-3 py-3 text-left">在售场次</th>
-                    <th className="border-b border-zinc-200 px-3 py-3 text-left">方案</th>
-                    <th className="border-b border-zinc-200 px-3 py-3 text-left">投注额</th>
-                    <th className="border-b border-zinc-200 px-3 py-3 text-left">固定赔率观察</th>
-                    <th className="border-b border-zinc-200 px-3 py-3 text-left">关联方案 ID</th>
+                    <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">编号 / 赛事</th>
+                    <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">对阵 / 开赛</th>
+                    <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">官方赔率</th>
+                    <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">分析批次</th>
+                    <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">胜平负</th>
+                    <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">让球</th>
+                    <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">进球 / 比分</th>
+                    <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">风险</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {analysisRuns.map((run) => (
-                    <tr key={`${run.stage}-${run.analysis_at || "na"}`} className="bg-white">
-                      <td className="border-b border-zinc-200 px-3 py-3 align-top">
-                        <StatusBadge tone={run.stage === "final" ? "success" : "warning"}>{run.stage_label}</StatusBadge>
-                      </td>
-                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
-                        {formatUpdatedAt(run.analysis_at)}
-                      </td>
-                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
-                        <div>{run.task_key || "—"}</div>
-                        <div className="mt-1 text-xs text-zinc-400">{run.status || "无状态回写"}</div>
-                      </td>
-                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
-                        {run.official_on_sale_count ?? "—"}
-                      </td>
-                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
-                        {run.real_plan_count}
-                      </td>
-                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
-                        {run.total_stake.toFixed(2)}
-                      </td>
-                      <td className="border-b border-zinc-200 px-3 py-3 align-top">
-                        <StatusBadge tone={run.fixed_shadow_recorded ? "success" : "neutral"}>
-                          {run.fixed_shadow_recorded ? run.fixed_shadow_plan_id || "已记录" : "未记录"}
-                        </StatusBadge>
-                      </td>
-                      <td className="border-b border-zinc-200 px-3 py-3 align-top text-zinc-700">
-                        {run.plan_ids.length > 0 ? run.plan_ids.join("、") : "—"}
-                      </td>
-                    </tr>
-                  ))}
+                  {filteredRows.map((row, index) => {
+                    const leagueName = row.competition_name_zh || competitionNameZh(row.competition_code, row.competition_name);
+                    const prediction = predictions.get(row.fixture_id);
+                    const fixtureSummary = fixtureLedgerMap.get(row.fixture_id);
+                    const intel = marketIntel.get(row.fixture_id);
+                    const handicapValue =
+                      intel?.alignment?.sporttery_handicap ?? prediction?.sporttery_handicap ?? null;
+                    const handicapEvaluation = evaluateSportteryHandicap(prediction, handicapValue);
+                    return (
+                      <tr key={row.fixture_id} className="bg-white hover:bg-zinc-50">
+                        <td className="border-b border-zinc-100 px-3 py-2.5 align-top">
+                          <div className="font-semibold tabular-nums text-zinc-900">
+                            {getSportteryCode(row.fixture_id, date, index)}
+                          </div>
+                          <span className={`mt-1 inline-flex rounded px-1.5 py-0.5 text-[11px] font-medium ${getLeagueBadgeClass(leagueName)}`}>
+                            {leagueName}
+                          </span>
+                        </td>
+                        <td className="border-b border-zinc-100 px-3 py-2.5 align-top">
+                          <div className="font-medium text-zinc-900">
+                            {row.home_team_name_zh || teamNameZh(row.home_team_name)}{" "}
+                            <span className="mx-1 text-zinc-400">vs</span>{" "}
+                            {row.away_team_name_zh || teamNameZh(row.away_team_name)}
+                            {row.home_score != null && row.away_score != null ? (
+                              <span className="ml-2 rounded bg-zinc-100 px-1.5 py-0.5 text-xs tabular-nums text-zinc-700">
+                                {row.home_score}:{row.away_score}
+                              </span>
+                            ) : null}
+                          </div>
+                          <div className="mt-1 flex items-center gap-2 text-xs text-zinc-500">
+                            <span>{row.kickoff_time_zh || formatLocalTimeFromUtc(row.utc_date, "Asia/Shanghai")}</span>
+                            <Link href={`/fixtures/${row.fixture_id}?date=${date}&view=analysis`} className="text-sky-600 hover:text-sky-700">
+                              析
+                            </Link>
+                            <Link href={`/fixtures/${row.fixture_id}?date=${date}&view=news`} className="text-sky-600 hover:text-sky-700">
+                              讯
+                            </Link>
+                          </div>
+                        </td>
+                        <td className="border-b border-zinc-100 px-3 py-2.5 align-top">{renderOddsChange(fixtureSummary?.odds_change)}</td>
+                        <td className="border-b border-zinc-100 px-3 py-2.5 align-top">
+                          {fixtureSummary?.analysis_run_count ? (
+                            <div>
+                              <div className="flex flex-wrap items-center gap-1">
+                                <span className="text-sm font-semibold tabular-nums text-zinc-900">{fixtureSummary.analysis_run_count} 次</span>
+                                {fixtureSummary.analysis_stage_labels.map((label) => (
+                                  <StatusBadge key={`${row.fixture_id}-${label}`} tone={/终版/.test(label) ? "success" : "warning"}>
+                                    {label}
+                                  </StatusBadge>
+                                ))}
+                              </div>
+                              <div className="mt-1 text-xs text-zinc-400">最新 {formatUpdatedAt(fixtureSummary.latest_analysis_at)}</div>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-zinc-400">未入批次</span>
+                          )}
+                        </td>
+                        <td className="border-b border-zinc-100 px-3 py-2.5 align-top text-zinc-700">{getOutcomeLabel(prediction)}</td>
+                        <td className="border-b border-zinc-100 px-3 py-2.5 align-top">
+                          {handicapEvaluation ? (
+                            <div className="flex flex-wrap items-center gap-1.5 text-sm text-zinc-800">
+                              <span className="font-semibold">{handicapEvaluation.topLabel}</span>
+                              <Chip tone="success">{handicapEvaluation.compactText}</Chip>
+                              <span className="text-xs tabular-nums text-zinc-400">
+                                {Math.round(handicapEvaluation.topProbability * 100)}%
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-sm text-zinc-300">—</span>
+                          )}
+                        </td>
+                        <td className="border-b border-zinc-100 px-3 py-2.5 align-top">
+                          <div className="max-w-[200px] text-zinc-700">{getGoalsScoreView(prediction)}</div>
+                        </td>
+                        <td className="border-b border-zinc-100 px-3 py-2.5 align-top">
+                          <div className="max-w-[200px] text-zinc-600">{getRiskHint(prediction, intel)}</div>
+                        </td>
+                      </tr>
+                    );
+                  })}
                 </tbody>
               </table>
             </div>
+          )}
+        </div>
+      </SurfaceCard>
+
+      <SurfaceCard
+        title="当日分析流水"
+        action={
+          analysisRuns.length > 0 ? (
+            <span className="text-xs text-zinc-500">
+              {analysisRuns.length} 个批次 · 产出 {totalPlanCount} 个方案 · 累计 {totalStake.toFixed(0)} 元
+            </span>
+          ) : undefined
+        }
+      >
+        {analysisRuns.length === 0 ? (
+          <EmptyState text="当日还没有分析批次记录，通常表示今天只同步了赛程。" />
+        ) : (
+          <div className="overflow-x-auto rounded-lg border border-zinc-200">
+            <table className="w-full border-separate border-spacing-0 text-sm">
+              <thead className="bg-zinc-50 text-xs text-zinc-500">
+                <tr>
+                  <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">批次 / 任务</th>
+                  <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">分析时间</th>
+                  <th className="border-b border-zinc-200 px-3 py-2.5 text-right font-medium">在售场次</th>
+                  <th className="border-b border-zinc-200 px-3 py-2.5 text-right font-medium">方案</th>
+                  <th className="border-b border-zinc-200 px-3 py-2.5 text-right font-medium">投注额</th>
+                  <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">固定赔率观察</th>
+                  <th className="border-b border-zinc-200 px-3 py-2.5 text-left font-medium">关联方案 ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {analysisRuns.map((run) => (
+                  <tr key={`${run.stage}-${run.analysis_at || "na"}`} className="bg-white">
+                    <td className="border-b border-zinc-100 px-3 py-2.5 align-top">
+                      <StatusBadge tone={run.stage === "final" ? "success" : "warning"}>{run.stage_label}</StatusBadge>
+                      <div className="mt-1 text-xs text-zinc-400">
+                        {run.task_key || "—"}
+                        {run.status ? ` · ${run.status}` : ""}
+                      </div>
+                    </td>
+                    <td className="border-b border-zinc-100 px-3 py-2.5 align-top text-zinc-700">{formatUpdatedAt(run.analysis_at)}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2.5 align-top text-right tabular-nums text-zinc-700">
+                      {run.official_on_sale_count ?? "—"}
+                    </td>
+                    <td className="border-b border-zinc-100 px-3 py-2.5 align-top text-right tabular-nums text-zinc-700">{run.real_plan_count}</td>
+                    <td className="border-b border-zinc-100 px-3 py-2.5 align-top text-right tabular-nums text-zinc-700">
+                      {run.total_stake.toFixed(2)}
+                    </td>
+                    <td className="border-b border-zinc-100 px-3 py-2.5 align-top">
+                      <StatusBadge tone={run.fixed_shadow_recorded ? "success" : "neutral"}>
+                        {run.fixed_shadow_recorded ? run.fixed_shadow_plan_id || "已记录" : "未记录"}
+                      </StatusBadge>
+                    </td>
+                    <td className="border-b border-zinc-100 px-3 py-2.5 align-top text-zinc-600">
+                      {run.plan_ids.length > 0 ? run.plan_ids.join("、") : "—"}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </SurfaceCard>
@@ -871,9 +714,8 @@ function FixturesPageContent() {
 
 export default function FixturesPage() {
   return (
-    <Suspense fallback={<div className="py-8 text-sm text-zinc-500">比赛页加载中…</div>}>
+    <Suspense fallback={<div className="py-8 text-sm text-zinc-400">比赛页加载中…</div>}>
       <FixturesPageContent />
     </Suspense>
   );
 }
-

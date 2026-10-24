@@ -5,10 +5,10 @@ import { useEffect, useMemo, useState } from "react";
 import type { DashboardContextResponse, Fixture, FixtureMarketIntel, Prediction, ReviewSummary } from "@/lib/api";
 import {
   EmptyState,
-  MetricCard,
   PageIntro,
   PrimaryLink,
   SecondaryLink,
+  StatStrip,
   StatusBadge,
   SurfaceCard,
 } from "@/components/Workbench";
@@ -19,13 +19,13 @@ import { competitionNameZh, formatLocalTimeFromUtc, teamNameZh } from "@/lib/zh"
 function getMarketSignalTags(intel?: FixtureMarketIntel | null) {
   if (!intel) return [];
   const tags: Array<{ label: string; tone: "neutral" | "success" | "warning" | "danger" }> = [];
-  if (intel.movement) tags.push({ label: "有盘口变化", tone: "warning" });
   if (intel.movement?.line_upgrade_without_price_support) tags.push({ label: "升盘背离", tone: "danger" });
-  if (intel.movement?.line_downgrade) tags.push({ label: "存在退盘", tone: "warning" });
-  if (intel.alignment?.time_aligned) tags.push({ label: "时间已对齐", tone: "success" });
+  if (intel.movement?.line_downgrade) tags.push({ label: "退盘", tone: "warning" });
   if (Math.abs(intel.alignment?.sporttery_minus_outer_handicap_median ?? 0) >= 0.5) {
-    tags.push({ label: "内外盘差较大", tone: "danger" });
+    tags.push({ label: "内外盘差大", tone: "danger" });
   }
+  if (intel.movement && tags.length === 0) tags.push({ label: "有盘口变化", tone: "warning" });
+  if (intel.alignment?.time_aligned && tags.length === 0) tags.push({ label: "时间已对齐", tone: "success" });
   return tags;
 }
 
@@ -86,6 +86,7 @@ export default function Home() {
   }, []);
 
   const systemStatus = dashboard?.system_status || null;
+
   const coreEnvOk = useMemo(() => {
     if (!systemStatus) return false;
     return systemStatus.env.hasSupabaseUrl && systemStatus.env.hasSupabaseServiceRole;
@@ -133,9 +134,9 @@ export default function Home() {
   // 今日流水线：注册表任务 + 隐含固定阶段
   const pipelineSteps = useMemo(() => {
     if (!dashboard) return [];
-    const steps: Array<{ label: string; time: string | null; status: "completed" | "scheduled" | "pending" | "failed" | "info" }> = [
-      { label: "10:00 预扫描", time: null, status: "info" },
-      { label: "11:05 开售确认", time: null, status: dashboard.registry.total_tasks > 0 ? "completed" : "info" },
+    const steps: Array<{ label: string; status: "completed" | "scheduled" | "pending" | "failed" | "info" }> = [
+      { label: "10:00 预扫描", status: "info" },
+      { label: "11:05 开售确认", status: dashboard.registry.total_tasks > 0 ? "completed" : "info" },
     ];
     for (const task of dashboard.registry.tasks || []) {
       const timeText = task.run_at ? task.run_at.slice(11, 16) : "--:--";
@@ -147,27 +148,23 @@ export default function Home() {
             : task.status === "failed"
               ? "failed"
               : "pending";
-      steps.push({
-        label: `${timeText} ${task.purpose || task.key || "任务"}`,
-        time: task.run_at,
-        status,
-      });
+      steps.push({ label: `${timeText} ${task.purpose || task.key || "任务"}`, status });
     }
     return steps;
   }, [dashboard]);
+
   const predictionMap = useMemo(() => new Map(predictions.map((prediction) => [prediction.fixture_id, prediction])), [predictions]);
-  const readyPredictions = useMemo(
-    () => predictions.filter((p) => p.confidence > 0).sort((a, b) => b.confidence - a.confidence),
+  const topPredictions = useMemo(
+    () => predictions.filter((p) => p.confidence > 0).sort((a, b) => b.confidence - a.confidence).slice(0, 5),
     [predictions],
   );
-  const topPredictions = readyPredictions.slice(0, 5);
 
   const keySignalFixtures = useMemo(
     () =>
       fixtures
         .map((fixture) => ({
           fixture,
-          intel: marketIntel.get(fixture.fixture_id) || null,
+          prediction: predictionMap.get(fixture.fixture_id) || null,
           tags: getMarketSignalTags(marketIntel.get(fixture.fixture_id) || null),
         }))
         .filter((item) => item.tags.length > 0)
@@ -178,7 +175,7 @@ export default function Home() {
           return b.tags.length - a.tags.length;
         })
         .slice(0, 5),
-    [fixtures, marketIntel],
+    [fixtures, marketIntel, predictionMap],
   );
 
   const planMatchNumberSet = useMemo(() => {
@@ -196,15 +193,9 @@ export default function Home() {
           const prediction = predictionMap.get(fixture.fixture_id) || null;
           const matchNumber = parseMatchNumberFromFixtureId(fixture.fixture_id);
           const tags: Array<{ label: string; tone: "neutral" | "success" | "warning" | "danger" }> = [];
-          if (matchNumber && planMatchNumberSet.has(matchNumber)) {
-            tags.push({ label: "已进投注方案", tone: "danger" });
-          }
+          if (matchNumber && planMatchNumberSet.has(matchNumber)) tags.push({ label: "已进投注方案", tone: "danger" });
           if (prediction && prediction.confidence >= 0.45) {
             tags.push({ label: `高置信 ${Math.round(prediction.confidence * 100)}%`, tone: "warning" });
-          }
-          if (prediction && typeof prediction.sporttery_handicap === "number") {
-            const sign = prediction.sporttery_handicap > 0 ? "+" : "";
-            tags.push({ label: `让球 ${sign}${prediction.sporttery_handicap}`, tone: "neutral" });
           }
           return { fixture, prediction, tags };
         })
@@ -226,18 +217,12 @@ export default function Home() {
       topPredictions.map((prediction) => ({
         prediction,
         fixture: fixtures.find((fixture) => fixture.fixture_id === prediction.fixture_id) || null,
-        intel: marketIntel.get(prediction.fixture_id) || null,
         tags: getMarketSignalTags(marketIntel.get(prediction.fixture_id) || null),
       })),
     [fixtures, marketIntel, topPredictions],
   );
 
   const missingPredictionCount = Math.max(fixtures.length - predictions.length, 0);
-  const keySignalCount = displaySignalFixtures.length;
-  const missingPredictionFixtures = useMemo(
-    () => fixtures.filter((fixture) => !predictedFixtureIds.has(fixture.fixture_id)).slice(0, 4),
-    [fixtures, predictedFixtureIds],
-  );
   const signalNeedsReview = useMemo(
     () => displaySignalFixtures.filter((item) => !predictedFixtureIds.has(item.fixture.fixture_id)).slice(0, 4),
     [displaySignalFixtures, predictedFixtureIds],
@@ -260,225 +245,159 @@ export default function Home() {
     ].filter(Boolean) as string[];
   }, [systemStatus]);
 
-  const salesWindowText = useMemo(() => {
-    if (!dashboard?.sales_window.window_end) return "未识别到体彩销售窗，已按默认口径回退。";
-    return `当前按体彩销售日 ${dashboard.active_sales_day} 展示，销售窗截止 ${formatDateTime(dashboard.sales_window.window_end)}。`;
-  }, [dashboard]);
+  const marketMode = dashboard?.market_signal_availability.mode;
 
   return (
-    <div className="grid gap-6">
+    <div className="grid gap-4">
       <PageIntro
-        eyebrow="销售日总览"
-        title={`${activeSalesDay} 体彩工作台`}
-        description={`首页已切到“体彩销售日”口径，不再按过了零点就清空。${salesWindowText}${dashboard?.market_signal_availability.note ? ` ${dashboard.market_signal_availability.note}` : ""}`}
+        eyebrow="总览"
+        title={`${activeSalesDay} 销售日`}
+        description={`销售窗至 ${formatDateTime(dashboard?.sales_window.window_end)} · 注册表更新 ${formatDateTime(dashboard?.registry.updated_at)}`}
         actions={
           <>
-            <PrimaryLink href={`/predictions?date=${activeSalesDay}`}>查看销售日预测</PrimaryLink>
-            <SecondaryLink href={`/fixtures?date=${activeSalesDay}`}>查看销售日赛程</SecondaryLink>
-            <SecondaryLink href="/review">查看复盘</SecondaryLink>
+            <PrimaryLink href={`/predictions?date=${activeSalesDay}`}>查看预测</PrimaryLink>
+            <SecondaryLink href={`/fixtures?date=${activeSalesDay}`}>查看赛程</SecondaryLink>
           </>
         }
       />
 
-      <section className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <MetricCard label="销售日比赛" value={loading ? "…" : String(fixtures.length)} hint="按体彩销售日窗口聚合" />
-        <MetricCard
-          label="已生成预测"
-          value={loading ? "…" : String(predictions.length)}
-          hint={loading ? "已返回胜平负概率的比赛数" : `仍有 ${missingPredictionCount} 场待补预测`}
-        />
-        <MetricCard
-          label="今日投注方案"
-          value={loading ? "…" : String(dashboard?.betting_plans.count || 0)}
-          hint={
-            loading
-              ? "按早盘/终版阶段统计真实方案数"
-              : dashboard?.betting_plans.stages.length
-                ? `已落地 ${dashboard.betting_plans.stages.length} 个出方案阶段`
-                : "当前还没有已落地的真实投注方案"
-          }
-        />
-        <MetricCard
-          label="重点信号"
-          value={loading ? "…" : String(keySignalCount)}
-          hint={dashboard?.market_signal_availability.mode === "sales_day_artifacts" ? "优先展示盘口/内外盘信号" : "市场信号缺失时自动降级为预测/方案重点"}
-        />
-      </section>
+      <StatStrip
+        items={[
+          { label: "销售日比赛", value: loading ? "…" : String(fixtures.length) },
+          {
+            label: "已生成预测",
+            value: loading ? "…" : String(predictions.length),
+            hint: missingPredictionCount > 0 ? `待补 ${missingPredictionCount} 场` : "已全覆盖",
+            tone: missingPredictionCount > 0 ? "warning" : "success",
+          },
+          {
+            label: "今日投注方案",
+            value: loading ? "…" : String(dashboard?.betting_plans.count || 0),
+            hint: dashboard?.betting_plans.stages.length ? `${dashboard.betting_plans.stages.length} 个出方案阶段` : "暂无方案",
+          },
+          {
+            label: "重点信号",
+            value: loading ? "…" : String(displaySignalFixtures.length),
+            hint: marketMode === "sales_day_artifacts" ? "盘口/内外盘信号" : "降级：预测与方案",
+          },
+        ]}
+      />
 
       {error ? (
-        <section className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
-          页面加载时发生错误：{error}
+        <section className="rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-sm text-red-700">
+          页面加载失败：{error}
         </section>
       ) : null}
 
-      <SurfaceCard
-        title="今日流水线"
-        description="把总控编排搬到台前：预扫描、开售确认、各时间组终版任务的完成状态和下一步时间。这是自动化后台第一次直接可见。"
-        action={
-          <SecondaryLink href="/controller">进入总控</SecondaryLink>
-        }
-      >
-        {pipelineSteps.length <= 2 ? (
-          <EmptyState text="当前销售日还没有编排任务。通常表示 11:05 开售确认尚未运行，或该销售日没有在售比赛。" />
-        ) : (
-          <div>
-            <div className="flex flex-wrap items-center gap-2">
-              {pipelineSteps.map((step, index) => (
-                <div key={`${step.label}-${index}`} className="flex items-center gap-2">
-                  <div
-                    className={
-                      step.status === "completed"
-                        ? "rounded-full bg-emerald-100 px-3 py-1.5 text-xs font-medium text-emerald-800"
-                        : step.status === "scheduled"
-                          ? "rounded-full bg-zinc-900 px-3 py-1.5 text-xs font-medium text-white"
-                          : step.status === "failed"
-                            ? "rounded-full bg-red-100 px-3 py-1.5 text-xs font-medium text-red-800"
-                            : step.status === "pending"
-                              ? "rounded-full bg-amber-100 px-3 py-1.5 text-xs font-medium text-amber-800"
-                              : "rounded-full bg-zinc-100 px-3 py-1.5 text-xs text-zinc-500"
-                    }
-                  >
-                    {step.label}
+      <div className="grid gap-4 xl:grid-cols-2">
+        <SurfaceCard
+          title="今日投注方案"
+          action={
+            <Link
+              href={`/predictions?date=${activeSalesDay}`}
+              className="text-xs font-medium text-zinc-500 hover:text-zinc-900"
+            >
+              进入预测页 →
+            </Link>
+          }
+        >
+          {(dashboard?.betting_plans.stages.length || 0) === 0 ? (
+            <EmptyState
+              text={
+                dashboard?.registry.total_tasks
+                  ? `今日 ${dashboard.registry.completed_tasks}/${dashboard.registry.total_tasks} 个任务已完成，尚未落地真实投注方案。`
+                  : "尚未读取到已落地的投注方案。"
+              }
+            />
+          ) : (
+            <div className="divide-y divide-zinc-100">
+              {dashboard?.betting_plans.stages.map((stage) => (
+                <div
+                  key={`${stage.stage}-${stage.analysis_at || stage.stage_label}`}
+                  className="flex flex-wrap items-center justify-between gap-2 py-2 first:pt-0 last:pb-0"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium text-zinc-900">{stage.stage_label}</div>
+                    <div className="mt-0.5 text-xs text-zinc-500">
+                      覆盖 {stage.scope.join("、") || "—"} · {formatDateTime(stage.analysis_at)}
+                    </div>
                   </div>
-                  {index < pipelineSteps.length - 1 ? <span className="text-zinc-300">→</span> : null}
+                  <div className="flex items-center gap-2">
+                    <StatusBadge tone={stage.real_plan_count > 0 ? "success" : "neutral"}>
+                      {stage.real_plan_count > 0 ? `${stage.real_plan_count} 个方案` : "无方案"}
+                    </StatusBadge>
+                    <span className="text-sm tabular-nums text-zinc-700">{stage.total_stake.toFixed(0)} 元</span>
+                  </div>
                 </div>
               ))}
             </div>
-            <div className="mt-3 text-xs text-zinc-500">
-              {dashboard?.registry.next_run_at
-                ? `下一步：${formatDateTime(dashboard.registry.next_run_at)} ${dashboard.registry.next_task_key || ""}`
-                : "当日任务已全部完成，下一次唤醒为次日 10:00 预扫描。"}
-              {dashboard?.registry.updated_at ? ` · 注册表更新 ${formatDateTime(dashboard.registry.updated_at)}` : ""}
-            </div>
-          </div>
-        )}
-      </SurfaceCard>
-
-      {heroStats ? (
-        <SurfaceCard
-          title="战绩速览"
-          description="由已入库复盘数据直接计算，用行业通用的战绩语言快速判断模型状态。"
-          action={<SecondaryLink href="/review">查看复盘</SecondaryLink>}
-        >
-          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-              <div className="text-xs text-zinc-500">当前连红</div>
-              <div className={`mt-1 text-2xl font-semibold ${heroStats.streak > 0 ? "text-red-600" : "text-zinc-950"}`}>
-                {heroStats.streak > 0 ? `${heroStats.streak} 天` : "0 天"}
-              </div>
-              <div className="mt-1 text-xs text-zinc-500">连续盈利销售日</div>
-            </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-              <div className="text-xs text-zinc-500">累计命中</div>
-              <div className="mt-1 text-2xl font-semibold text-zinc-950">{heroStats.totalHits} 场</div>
-              <div className="mt-1 text-xs text-zinc-500">
-                命中率 {heroStats.hitRate != null ? `${Math.round(heroStats.hitRate * 100)}%` : "—"}
-              </div>
-            </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-              <div className="text-xs text-zinc-500">累计盈利率</div>
-              <div className={`mt-1 text-2xl font-semibold ${heroStats.roi != null && heroStats.roi > 0 ? "text-emerald-700" : "text-red-700"}`}>
-                {heroStats.roi != null ? `${(heroStats.roi * 100).toFixed(1)}%` : "—"}
-              </div>
-              <div className="mt-1 text-xs text-zinc-500">真实方案口径</div>
-            </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-              <div className="text-xs text-zinc-500">上周命中</div>
-              <div className="mt-1 text-2xl font-semibold text-zinc-950">{heroStats.last7Hits} 场</div>
-              <div className="mt-1 text-xs text-zinc-500">近 7 个自然日</div>
-            </div>
-            <div className="rounded-2xl border border-zinc-200 bg-zinc-50 px-4 py-4">
-              <div className="text-xs text-zinc-500">已复盘</div>
-              <div className="mt-1 text-2xl font-semibold text-zinc-950">{heroStats.days} 天</div>
-              <div className="mt-1 text-xs text-zinc-500">入库销售日数量</div>
-            </div>
-          </div>
+          )}
         </SurfaceCard>
-      ) : null}
 
-      <section className="grid gap-6 xl:grid-cols-[1.05fr_0.95fr]">
         <SurfaceCard
-          title="今日投注方案"
-          description="把当前销售日已经真正出方案的阶段放在首页第一屏，先看有没有方案，再看方案覆盖了哪些比赛。"
+          title="今日流水线"
           action={
-            <Link href={`/predictions?date=${activeSalesDay}`} className="text-sm font-medium text-zinc-700 hover:text-zinc-950">
-              进入预测页
+            <Link href="/controller" className="text-xs font-medium text-zinc-500 hover:text-zinc-900">
+              进入总控 →
             </Link>
           }
         >
-          <div className="grid gap-3">
-            {(dashboard?.betting_plans.stages.length || 0) === 0 ? (
-              <EmptyState
-                text={
-                  dashboard?.registry.total_tasks
-                    ? `当前销售日共 ${dashboard.registry.total_tasks} 个任务，已完成 ${dashboard.registry.completed_tasks} 个，暂未读取到真实投注方案产物。`
-                    : "当前还没有读取到已落地的投注方案。"
-                }
-              />
-            ) : (
-              dashboard?.betting_plans.stages.map((stage) => (
-                <div key={`${stage.stage}-${stage.analysis_at || stage.stage_label}`} className="rounded-xl border border-zinc-200 px-4 py-3">
-                  <div className="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <div className="text-sm font-medium text-zinc-950">{stage.stage_label}</div>
-                      <div className="mt-1 text-xs text-zinc-500">
-                        生成时间 {formatDateTime(stage.analysis_at)} · 覆盖场次 {stage.scope.join("、") || "—"}
-                      </div>
-                    </div>
-                    <StatusBadge tone={stage.real_plan_count > 0 ? "success" : "neutral"}>
-                      {stage.real_plan_count > 0 ? `${stage.real_plan_count} 个真实方案` : "无真实方案"}
+          {pipelineSteps.length <= 2 ? (
+            <EmptyState text="今日尚未生成编排任务，通常表示 11:05 开售确认还没运行。" />
+          ) : (
+            <div>
+              <div className="flex flex-wrap items-center gap-x-1.5 gap-y-2">
+                {pipelineSteps.map((step, index) => (
+                  <div key={`${step.label}-${index}`} className="flex items-center gap-1.5">
+                    <StatusBadge
+                      tone={
+                        step.status === "completed"
+                          ? "success"
+                          : step.status === "failed"
+                            ? "danger"
+                            : step.status === "pending"
+                              ? "warning"
+                              : step.status === "scheduled"
+                                ? "info"
+                                : "neutral"
+                      }
+                    >
+                      {step.label}
                     </StatusBadge>
+                    {index < pipelineSteps.length - 1 ? <span className="text-zinc-300">›</span> : null}
                   </div>
-                  <div className="mt-3 grid gap-3 text-sm text-zinc-700 md:grid-cols-3">
-                    <div className="rounded-xl bg-zinc-50 px-3 py-3">
-                      <div className="text-xs text-zinc-500">方案数</div>
-                      <div className="mt-1 font-semibold text-zinc-950">{stage.real_plan_count}</div>
-                    </div>
-                    <div className="rounded-xl bg-zinc-50 px-3 py-3">
-                      <div className="text-xs text-zinc-500">总投注额</div>
-                      <div className="mt-1 font-semibold text-zinc-950">{stage.total_stake.toFixed(2)} 元</div>
-                    </div>
-                    <div className="rounded-xl bg-zinc-50 px-3 py-3">
-                      <div className="text-xs text-zinc-500">影子方案</div>
-                      <div className="mt-1 font-semibold text-zinc-950">{stage.fixed_shadow_recorded ? "已记录" : "未记录"}</div>
-                    </div>
-                  </div>
-                  {stage.plan_ids.length > 0 ? (
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      {stage.plan_ids.map((planId) => (
-                        <StatusBadge key={planId} tone={/SAFE/i.test(planId) ? "success" : "warning"}>
-                          {planId}
-                        </StatusBadge>
-                      ))}
-                    </div>
-                  ) : null}
-                </div>
-              ))
-            )}
-          </div>
+                ))}
+              </div>
+              <div className="mt-3 border-t border-zinc-100 pt-2 text-xs text-zinc-500">
+                {dashboard?.registry.next_run_at
+                  ? `下一步 ${formatDateTime(dashboard.registry.next_run_at)} ${dashboard.registry.next_task_key || ""}`
+                  : "当日任务已全部完成，下次唤醒为次日 10:00。"}
+              </div>
+            </div>
+          )}
         </SurfaceCard>
+      </div>
 
+      <div className="grid gap-4 xl:grid-cols-2">
         <SurfaceCard
-          title="今日重点信号比赛"
-          description={
-            dashboard?.market_signal_availability.mode === "sales_day_artifacts"
-              ? "优先看盘口异常、内外盘差较大或已完成时间对齐的场次。"
-              : "当前销售日缺少盘口/对齐产物，先用“已进投注方案 + 高置信预测”兜底显示重点比赛。"
-          }
+          title="重点信号比赛"
+          description={marketMode === "sales_day_artifacts" ? undefined : "市场信号缺失，已降级为方案与高置信预测"}
           action={
-            <Link href={`/fixtures?date=${activeSalesDay}`} className="text-sm font-medium text-zinc-700 hover:text-zinc-950">
-              进入比赛页
+            <Link
+              href={`/fixtures?date=${activeSalesDay}`}
+              className="text-xs font-medium text-zinc-500 hover:text-zinc-900"
+            >
+              进入比赛页 →
             </Link>
           }
         >
-          <div className="grid gap-3">
-            {displaySignalFixtures.length === 0 ? (
-              <EmptyState text="当前没有可展示的重点信号比赛。建议先确认销售日赛程、预测与市场信号产物是否同步完成。" />
-            ) : (
-              displaySignalFixtures.map((item) => {
+          {displaySignalFixtures.length === 0 ? (
+            <EmptyState text="今日没有触发盘口信号或高置信条件的比赛。" />
+          ) : (
+            <div className="divide-y divide-zinc-100">
+              {displaySignalFixtures.map((item) => {
                 const fixture = item.fixture;
                 const prediction = predictionMap.get(fixture.fixture_id) || null;
-                const tags = item.tags;
                 const topOutcome = prediction
                   ? [
                       { label: "主胜", value: prediction.p_home },
@@ -486,223 +405,155 @@ export default function Home() {
                       { label: "客胜", value: prediction.p_away },
                     ].sort((a, b) => b.value - a.value)[0]
                   : null;
-
                 return (
-                  <div key={fixture.fixture_id} className="rounded-xl border border-zinc-200 px-4 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-medium text-zinc-950">
-                          {(fixture.home_team_name_zh || teamNameZh(fixture.home_team_name)) || "主队"} vs{" "}
-                          {(fixture.away_team_name_zh || teamNameZh(fixture.away_team_name)) || "客队"}
-                        </div>
-                        <div className="mt-1 text-xs text-zinc-500">
-                          {fixture.competition_name_zh || competitionNameZh(fixture.competition_code, fixture.competition_name)} ·{" "}
-                          {fixture.kickoff_time_zh || formatLocalTimeFromUtc(fixture.utc_date, "Asia/Shanghai")}
-                        </div>
+                  <Link
+                    key={fixture.fixture_id}
+                    href={`/fixtures/${fixture.fixture_id}?date=${activeSalesDay}`}
+                    className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0 hover:bg-zinc-50"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-zinc-900">
+                        {(fixture.home_team_name_zh || teamNameZh(fixture.home_team_name)) || "主队"}{" "}
+                        <span className="text-zinc-400">vs</span>{" "}
+                        {(fixture.away_team_name_zh || teamNameZh(fixture.away_team_name)) || "客队"}
                       </div>
-                      {prediction ? (
-                        <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700">
-                          置信 {Math.round(prediction.confidence * 100)}%
-                        </div>
-                      ) : null}
-                    </div>
-                    {topOutcome ? <div className="mt-2 text-sm text-zinc-600">当前最高概率：{topOutcome.label} {Math.round(topOutcome.value * 100)}%</div> : null}
-                    {tags.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {tags.map((tag) => (
-                          <StatusBadge key={tag.label} tone={tag.tone}>
-                            {tag.label}
-                          </StatusBadge>
-                        ))}
+                      <div className="mt-0.5 truncate text-xs text-zinc-500">
+                        {fixture.competition_name_zh || competitionNameZh(fixture.competition_code, fixture.competition_name)} ·{" "}
+                        {fixture.kickoff_time_zh || formatLocalTimeFromUtc(fixture.utc_date, "Asia/Shanghai")}
+                        {topOutcome ? ` · 最高概率 ${topOutcome.label} ${Math.round(topOutcome.value * 100)}%` : ""}
                       </div>
-                    ) : null}
-                    {prediction ? <div className="mt-2 text-xs text-zinc-500 line-clamp-2">{(prediction.factors || []).slice(0, 2).join("；") || "暂无关键因素说明"}</div> : null}
-                    <div className="mt-3">
-                      <Link href={`/fixtures/${fixture.fixture_id}?date=${activeSalesDay}`} className="text-xs font-medium text-zinc-700 hover:text-zinc-950">
-                        进入单场详情
-                      </Link>
                     </div>
-                  </div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {prediction ? <StatusBadge tone="neutral">置信 {Math.round(prediction.confidence * 100)}%</StatusBadge> : null}
+                      {item.tags.map((tag) => (
+                        <StatusBadge key={tag.label} tone={tag.tone}>
+                          {tag.label}
+                        </StatusBadge>
+                      ))}
+                    </div>
+                  </Link>
                 );
-              })
-            )}
-          </div>
+              })}
+            </div>
+          )}
         </SurfaceCard>
-      </section>
 
-      <section className="grid gap-6 xl:grid-cols-[1fr_0.95fr]">
         <SurfaceCard
-          title="今日重点预测比赛"
-          description="把高置信度预测放在一起，作为首页第二层的重点关注区。"
+          title="重点预测"
           action={
-            <Link href={`/predictions?date=${activeSalesDay}`} className="text-sm font-medium text-zinc-700 hover:text-zinc-950">
-              进入预测页
+            <Link
+              href={`/predictions?date=${activeSalesDay}`}
+              className="text-xs font-medium text-zinc-500 hover:text-zinc-900"
+            >
+              进入预测页 →
             </Link>
           }
         >
-          <div className="grid gap-3">
-            {spotlightPredictions.length === 0 ? (
-              <EmptyState text="还没有可展示的预测结果，通常是因为销售日数据未导入，或预测接口尚未返回数据。" />
-            ) : (
-              spotlightPredictions.map(({ prediction, fixture, tags }) => {
+          {spotlightPredictions.length === 0 ? (
+            <EmptyState text="今日还没有返回预测结果。" />
+          ) : (
+            <div className="divide-y divide-zinc-100">
+              {spotlightPredictions.map(({ prediction, fixture, tags }) => {
                 const topOutcome = [
                   { label: "主胜", value: prediction.p_home },
                   { label: "平", value: prediction.p_draw },
                   { label: "客胜", value: prediction.p_away },
                 ].sort((a, b) => b.value - a.value)[0];
-
                 return (
-                  <div key={prediction.fixture_id} className="rounded-xl border border-zinc-200 px-4 py-3">
-                    <div className="flex items-start justify-between gap-3">
-                      <div>
-                        <div className="text-sm font-medium text-zinc-950">
-                          {(fixture?.home_team_name_zh || teamNameZh(fixture?.home_team_name)) || "主队"} vs{" "}
-                          {(fixture?.away_team_name_zh || teamNameZh(fixture?.away_team_name)) || "客队"}
-                        </div>
-                        <div className="mt-1 text-xs text-zinc-500">
-                          {fixture?.competition_name_zh || competitionNameZh(fixture?.competition_code, fixture?.competition_name)} ·{" "}
-                          {fixture?.kickoff_time_zh || formatLocalTimeFromUtc(fixture?.utc_date, "Asia/Shanghai")}
-                        </div>
+                  <Link
+                    key={prediction.fixture_id}
+                    href={`/fixtures/${prediction.fixture_id}?date=${activeSalesDay}`}
+                    className="flex flex-wrap items-center justify-between gap-2 py-2.5 first:pt-0 last:pb-0 hover:bg-zinc-50"
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-sm font-medium text-zinc-900">
+                        {(fixture?.home_team_name_zh || teamNameZh(fixture?.home_team_name)) || "主队"}{" "}
+                        <span className="text-zinc-400">vs</span>{" "}
+                        {(fixture?.away_team_name_zh || teamNameZh(fixture?.away_team_name)) || "客队"}
                       </div>
-                      <div className="rounded-full bg-zinc-100 px-3 py-1 text-xs text-zinc-700">
-                        置信 {Math.round(prediction.confidence * 100)}%
+                      <div className="mt-0.5 truncate text-xs text-zinc-500">
+                        {fixture?.competition_name_zh || competitionNameZh(fixture?.competition_code, fixture?.competition_name)} · 最高概率{" "}
+                        {topOutcome.label} {Math.round(topOutcome.value * 100)}%
                       </div>
                     </div>
-                    <div className="mt-2 text-sm text-zinc-600">
-                      当前最高概率：{topOutcome.label} {Math.round(topOutcome.value * 100)}%
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <StatusBadge tone="neutral">置信 {Math.round(prediction.confidence * 100)}%</StatusBadge>
+                      {tags.map((tag) => (
+                        <StatusBadge key={tag.label} tone={tag.tone}>
+                          {tag.label}
+                        </StatusBadge>
+                      ))}
                     </div>
-                    {tags.length > 0 ? (
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        {tags.map((tag) => (
-                          <StatusBadge key={tag.label} tone={tag.tone}>
-                            {tag.label}
-                          </StatusBadge>
-                        ))}
-                      </div>
-                    ) : null}
-                    <div className="mt-2 text-xs text-zinc-500 line-clamp-2">
-                      {(prediction.factors || []).slice(0, 2).join("；") || "暂无关键因素说明"}
-                    </div>
-                    <div className="mt-3">
-                      <Link href={`/fixtures/${prediction.fixture_id}?date=${activeSalesDay}`} className="text-xs font-medium text-zinc-700 hover:text-zinc-950">
-                        进入单场详情
-                      </Link>
-                    </div>
-                  </div>
+                  </Link>
                 );
-              })
-            )}
-          </div>
+              })}
+            </div>
+          )}
         </SurfaceCard>
+      </div>
 
-        <div className="grid gap-6">
-          <SurfaceCard title="系统状态与刷新口径">
-            <div className="grid gap-3">
-              <div className="rounded-xl border border-zinc-200 bg-zinc-50 px-4 py-3 text-sm">
-                <div className="font-medium text-zinc-950">环境、数据库与销售日口径</div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <StatusBadge tone={coreEnvOk ? "success" : "danger"}>{coreEnvOk ? "核心环境 2/2" : "核心环境未就绪"}</StatusBadge>
-                  <StatusBadge tone={optionalReadyCount === 3 ? "success" : "warning"}>可选能力 {optionalReadyCount}/3</StatusBadge>
-                  <StatusBadge tone={systemStatus?.supabase.ok ? "success" : systemStatus?.supabase.ok === false ? "danger" : "neutral"}>
-                    {systemStatus?.supabase.ok ? "数据库正常" : systemStatus?.supabase.ok === false ? "数据库异常" : "数据库待检测"}
-                  </StatusBadge>
-                  <StatusBadge tone="neutral">销售日 {activeSalesDay}</StatusBadge>
-                </div>
-                <div className="mt-2 text-xs text-zinc-500">
-                  {systemStatus?.supabase.error || dashboard?.sales_window.message || "建议先确认环境、数据库和当前销售日数据同步状态，再处理重点比赛。"}
-                </div>
-                <div className="mt-2 text-xs text-zinc-500">
-                  销售窗：{dashboard?.sales_window.window_start ? formatDateTime(dashboard.sales_window.window_start) : "—"} 至{" "}
-                  {dashboard?.sales_window.window_end ? formatDateTime(dashboard.sales_window.window_end) : "—"}
-                </div>
-                {coreMissingEnvItems.length > 0 ? <div className="mt-2 text-xs text-red-700">核心缺失：{coreMissingEnvItems.join("、")}</div> : null}
-                {optionalMissingEnvItems.length > 0 ? <div className="mt-2 text-xs text-amber-700">可选未配：{optionalMissingEnvItems.join("、")}</div> : null}
-              </div>
-              <Link href="/setup" className="rounded-xl border border-zinc-200 px-4 py-3 text-sm hover:bg-zinc-50">
-                去系统页检查环境变量、数据库和导入状态
-              </Link>
-              <Link href="/review" className="rounded-xl border border-zinc-200 px-4 py-3 text-sm hover:bg-zinc-50">
-                去复盘页查看历史结果与盈亏
-              </Link>
-            </div>
-          </SurfaceCard>
+      {heroStats ? (
+        <SurfaceCard
+          title="战绩速览"
+          action={
+            <Link href="/review" className="text-xs font-medium text-zinc-500 hover:text-zinc-900">
+              查看复盘 →
+            </Link>
+          }
+        >
+          <StatStrip
+            items={[
+              {
+                label: "当前连红",
+                value: `${heroStats.streak} 天`,
+                hint: "连续盈利销售日",
+                tone: heroStats.streak > 0 ? "success" : undefined,
+              },
+              {
+                label: "累计命中",
+                value: `${heroStats.totalHits} 场`,
+                hint: heroStats.hitRate != null ? `命中率 ${Math.round(heroStats.hitRate * 100)}%` : "—",
+              },
+              {
+                label: "累计盈利率",
+                value: heroStats.roi != null ? `${(heroStats.roi * 100).toFixed(1)}%` : "—",
+                hint: "真实方案口径",
+                tone: heroStats.roi != null ? (heroStats.roi > 0 ? "success" : "danger") : undefined,
+              },
+              { label: "近 7 日命中", value: `${heroStats.last7Hits} 场`, hint: `已复盘 ${heroStats.days} 天` },
+            ]}
+          />
+        </SurfaceCard>
+      ) : null}
 
-          <SurfaceCard title="今日待处理事项" description="把当前销售日还没处理完的比赛和系统项集中到一处。">
-            <div className="grid gap-3">
-              <div className="rounded-xl border border-zinc-200 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium text-zinc-950">待补预测比赛</div>
-                  <StatusBadge tone={missingPredictionCount > 0 ? "warning" : "success"}>
-                    {missingPredictionCount > 0 ? `${missingPredictionCount} 场待补` : "已覆盖"}
-                  </StatusBadge>
-                </div>
-                <div className="mt-2 text-xs text-zinc-500">
-                  {missingPredictionFixtures.length > 0
-                    ? missingPredictionFixtures
-                        .map(
-                          (fixture) =>
-                            `${fixture.home_team_name_zh || teamNameZh(fixture.home_team_name)} vs ${
-                              fixture.away_team_name_zh || teamNameZh(fixture.away_team_name)
-                            }`,
-                        )
-                        .join("；")
-                    : "当前首页已拿到的比赛都存在预测结果。"}
-                </div>
-                <Link href={`/fixtures?date=${activeSalesDay}`} className="mt-3 inline-block text-xs font-medium text-zinc-700 hover:text-zinc-950">
-                  去比赛页核对赛程与导入
-                </Link>
-              </div>
-
-              <div className="rounded-xl border border-zinc-200 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium text-zinc-950">重点信号待查看</div>
-                  <StatusBadge tone={signalNeedsReview.length > 0 ? "danger" : "success"}>
-                    {signalNeedsReview.length > 0 ? `${signalNeedsReview.length} 场优先处理` : "已查看主链路"}
-                  </StatusBadge>
-                </div>
-                <div className="mt-2 text-xs text-zinc-500">
-                  {signalNeedsReview.length > 0
-                    ? signalNeedsReview
-                        .map(
-                          (item) =>
-                            `${item.fixture.home_team_name_zh || teamNameZh(item.fixture.home_team_name)} vs ${
-                              item.fixture.away_team_name_zh || teamNameZh(item.fixture.away_team_name)
-                            }`,
-                        )
-                        .join("；")
-                    : "当前首页列出的重点比赛基本都已经进入预测链路。"}
-                </div>
-                <Link href={`/fixtures?date=${activeSalesDay}`} className="mt-3 inline-block text-xs font-medium text-zinc-700 hover:text-zinc-950">
-                  去比赛页查看重点信号
-                </Link>
-              </div>
-
-              <div className="rounded-xl border border-zinc-200 px-4 py-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div className="text-sm font-medium text-zinc-950">系统待处理项</div>
-                  <StatusBadge tone={coreMissingEnvItems.length > 0 || systemStatus?.supabase.ok === false ? "warning" : "success"}>
-                    {coreMissingEnvItems.length > 0 || systemStatus?.supabase.ok === false ? "需要检查" : "状态正常"}
-                  </StatusBadge>
-                </div>
-                <div className="mt-2 text-xs text-zinc-500">
-                  {coreMissingEnvItems.length > 0
-                    ? `核心环境待补：${coreMissingEnvItems.join("、")}`
-                    : systemStatus?.supabase.ok === false
-                      ? systemStatus?.supabase.error || "数据库连接异常"
-                      : optionalMissingEnvItems.length > 0
-                        ? `可选能力未配置（不影响主流程）：${optionalMissingEnvItems.join("、")}`
-                        : dashboard?.registry.next_task_key
-                          ? `下一个任务：${dashboard?.registry.next_task_key}`
-                          : "环境变量和数据库状态当前没有明显阻塞项。"}
-                </div>
-                <Link href="/setup" className="mt-3 inline-block text-xs font-medium text-zinc-700 hover:text-zinc-950">
-                  去系统页处理
-                </Link>
-              </div>
-            </div>
-          </SurfaceCard>
+      <SurfaceCard title="系统与待办">
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-2">
+          <StatusBadge tone={coreEnvOk ? "success" : "danger"}>{coreEnvOk ? "核心环境 2/2" : "核心环境未就绪"}</StatusBadge>
+          <StatusBadge tone={optionalReadyCount === 3 ? "success" : "warning"}>可选能力 {optionalReadyCount}/3</StatusBadge>
+          <StatusBadge
+            tone={systemStatus?.supabase.ok ? "success" : systemStatus?.supabase.ok === false ? "danger" : "neutral"}
+          >
+            {systemStatus?.supabase.ok ? "数据库正常" : systemStatus?.supabase.ok === false ? "数据库异常" : "数据库待检测"}
+          </StatusBadge>
+          <StatusBadge tone={missingPredictionCount > 0 ? "warning" : "success"}>
+            {missingPredictionCount > 0 ? `待补预测 ${missingPredictionCount} 场` : "预测已覆盖"}
+          </StatusBadge>
+          <StatusBadge tone={signalNeedsReview.length > 0 ? "warning" : "success"}>
+            {signalNeedsReview.length > 0 ? `重点信号待查看 ${signalNeedsReview.length} 场` : "重点信号已查看"}
+          </StatusBadge>
         </div>
-      </section>
+        {coreMissingEnvItems.length > 0 || optionalMissingEnvItems.length > 0 || systemStatus?.supabase.error ? (
+          <div className="mt-3 grid gap-1 text-xs">
+            {coreMissingEnvItems.length > 0 ? (
+              <div className="text-red-600">核心缺失：{coreMissingEnvItems.join("、")}，请到系统页补齐。</div>
+            ) : null}
+            {optionalMissingEnvItems.length > 0 ? (
+              <div className="text-amber-600">可选未配（不影响主流程）：{optionalMissingEnvItems.join("、")}</div>
+            ) : null}
+            {systemStatus?.supabase.error ? <div className="text-red-600">{systemStatus.supabase.error}</div> : null}
+          </div>
+        ) : null}
+      </SurfaceCard>
     </div>
   );
 }
